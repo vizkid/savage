@@ -2,14 +2,14 @@
 
 Manual, in your real Chrome (login + clipboard permission state are profile-bound).
 Load the extension unpacked from the repo root, open an **editable** Slides deck.
-Expect one clipboard permission prompt the first time — click Allow.
+Expect one clipboard permission prompt the first time. Click Allow.
 
 Fixtures: any SVG markup in an editor; a `.svg` file on disk;
 a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_Logo.svg>.
 
 | # | Steps | Pass when |
 |---|---|---|
-| 1 | Copy SVG markup in an editor → click into the Slides tab → Ctrl/Cmd+V | Toast "SVG ready — paste as PNG"; PNG lands, transparent, sharp at full-slide size |
+| 1 | Copy SVG markup in an editor → click into the Slides tab → Ctrl/Cmd+V | Toast "SVG ready. Paste as PNG"; PNG lands, transparent, sharp at full-slide size |
 | 2 | Copy SVG elsewhere → Alt/Cmd-Tab back (no click) → Ctrl/Cmd+V | Same as 1 (focus trigger needs no click; keydown is backstop) |
 | 3 | Figma → Copy as SVG → paste in Slides | Same as 1 |
 | 4 | SVG with `viewBox` but no width/height | Correct aspect, 2048 longest side (checked in unit tests too; spot-check visually) |

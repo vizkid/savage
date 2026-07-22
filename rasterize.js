@@ -1,11 +1,11 @@
 'use strict';
 
 // Pure SVG logic: detection + rasterization. No extension APIs, no page
-// state — loaded by both the content script and the unit test page.
+// state. Loaded by both the content script and the unit test page.
 
 // Strict prefix rule: after leading whitespace, XML prolog, doctype, and
-// comments, the text must begin with an <svg> root tag. Never scan mid-string
-// — copied HTML or prose that merely contains an SVG must not trigger.
+// comments, the text must begin with an <svg> root tag. Never scan mid-string:
+// copied HTML or prose that merely contains an SVG must not trigger.
 function extractSvgFromText(text) {
   if (typeof text !== 'string') return null;
   let s = text;

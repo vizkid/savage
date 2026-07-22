@@ -32,7 +32,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       try {
         res = await fetch(url, { credentials: 'omit' });
       } catch (_) {
-        throw new Error('the site blocks cross-origin requests — allow "any site" in the SaVaGe popup');
+        throw new Error('the site blocks cross-origin requests. Allow "any site" in the SaVaGe popup');
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const type = res.headers.get('content-type') || '';

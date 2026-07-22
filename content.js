@@ -56,7 +56,7 @@
     try {
       ({ blob } = await rasterizeSvg(svgText, await getOutputPx()));
     } catch (err) {
-      toast(`SVG couldn't be converted — ${err.message}`, true);
+      toast(`SVG couldn't be converted: ${err.message}`, true);
       return null; // clipboard untouched
     }
     try {
@@ -67,7 +67,7 @@
         }),
       ]);
     } catch (_) {
-      toast("SVG couldn't be converted — clipboard write was blocked", true);
+      toast("SVG couldn't be converted: clipboard write was blocked", true);
       return null;
     }
     if (successMsg) toast(successMsg);
@@ -128,7 +128,7 @@
       return; // read rejected or unreadable: silent no-op, retry on next trigger
     }
     if (!svgText || svgText === lastProcessed) return;
-    await convertAndWrite(svgText, 'SVG ready — paste as PNG');
+    await convertAndWrite(svgText, 'SVG ready. Paste as PNG');
   }
 
   async function handleSvgPayload({ svgText, url }) {
@@ -144,7 +144,7 @@
         const reason = !resp
           ? 'no response from service worker'
           : resp.error || 'response was not SVG';
-        toast(`Couldn't fetch that SVG — ${reason}`, true);
+        toast(`Couldn't fetch that SVG: ${reason}`, true);
         return;
       }
       svgText = resp.text;
@@ -153,7 +153,7 @@
     if (!result) return;
     const placed = await autoPaste(result.blob);
     debug('autoPaste handled:', placed);
-    toast(placed ? 'SVG placed' : `SVG converted — press ${PASTE_KEY} to place it`);
+    toast(placed ? 'SVG placed' : `SVG converted. Press ${PASTE_KEY} to place it`);
   }
 
   // ---------- frame relay: children forward, only the top frame acts ----------
@@ -263,7 +263,7 @@
       const file = firstSvgFile(dt);
       const markup = file ? null : extractSvgFromText(dt.getData('text/plain'));
       const url = file || markup ? null : svgUrlFrom(dt);
-      debug('drop rule:', file ? `file ${file.name}` : markup ? 'markup' : url ? `url ${url}` : 'no match — native');
+      debug('drop rule:', file ? `file ${file.name}` : markup ? 'markup' : url ? `url ${url}` : 'no match, native');
       if (!file && !markup && !url) return;
       e.preventDefault();
       e.stopImmediatePropagation();

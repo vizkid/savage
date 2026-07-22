@@ -79,7 +79,7 @@ t('width/height attrs, no viewBox → viewBox synthesized, content scales', asyn
   assert(width === 2048 && height === 1024, `reported ${width}×${height}`);
   // The 300×150 purple rect fills the whole canvas only if a viewBox was synthesized.
   const { ctx } = await pixelsOf(blob);
-  assert(alphaAt(ctx, 2000, 1000) === 255, 'far corner content missing — viewBox not synthesized');
+  assert(alphaAt(ctx, 2000, 1000) === 255, 'far corner content missing, viewBox not synthesized');
 });
 
 t('custom outputPx 1024 → 1024 longest side', async () => {
@@ -181,13 +181,13 @@ t('DEFAULT_OUTPUT_PX is 2048; getOutputPx falls back to it outside the extension
       pass++;
     } catch (err) {
       li.className = 'fail';
-      li.textContent = `${name} — ${err.message}`;
+      li.textContent = `${name}: ${err.message}`;
       fail++;
     }
     results.appendChild(li);
   }
   const summary = `${pass} passed, ${fail} failed, ${cases.length} total`;
   document.getElementById('summary').textContent = summary;
-  document.title = fail ? `FAIL — ${summary}` : `PASS — ${summary}`;
+  document.title = fail ? `FAIL: ${summary}` : `PASS: ${summary}`;
   window.__testResults = { pass, fail, total: cases.length, done: true };
 })();
