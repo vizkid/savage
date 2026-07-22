@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SaVaGe — Privacy Policy</title>
+<style>
+  :root { --bg: #FAFAF7; --ink: #20242B; --muted: #6E6A5F; --accent: #9A6303; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #15171B; --ink: #ECE9E2; --muted: #9B978C; --accent: #FFB13B; }
+  }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 48px 24px; }
+  h1 { font-size: 1.8rem; margin: 0 0 6px; }
+  h2 { font-size: 1.15rem; margin: 28px 0 8px; }
+  p, li { color: var(--ink); }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>SaVaGe — Privacy Policy</h1>
+  <p class="muted">Last updated: 2026-07-22</p>
+
+  <p>SaVaGe converts SVGs into PNG images on their way into Google Slides.
+  Everything happens locally in your browser.</p>
+
+  <h2>Clipboard</h2>
+  <p>When a Google Slides tab gains focus (or you press Ctrl/Cmd there), SaVaGe
+  reads your clipboard to check whether it holds an SVG. If it does, the SVG is
+  converted locally and the clipboard is rewritten with the resulting PNG plus
+  the original markup. Clipboard contents are processed in memory only — never
+  stored, logged, or transmitted anywhere.</p>
+
+  <h2>Storage</h2>
+  <p>One number is saved in Chrome's extension storage: your chosen output size.
+  Nothing else is stored.</p>
+
+  <h2>Network</h2>
+  <p>SaVaGe makes no network requests, with one exception: when you drag an SVG
+  <em>image from another website</em> into Slides, the extension fetches that
+  image's URL to get the SVG (for Wikipedia/Wikimedia pages this includes a
+  MediaWiki API lookup to locate the file). Nothing about you or your documents
+  is sent — only the request for the file you just dragged.</p>
+
+  <h2>Optional permission</h2>
+  <p>By default SaVaGe has no access to websites' data. The optional "fetch from
+  any site" setting grants host access solely so dragged-URL fetches work on
+  sites that block cross-origin requests. It is off unless you enable it, and
+  you can revoke it in the popup at any time.</p>
+
+  <h2>What SaVaGe does not do</h2>
+  <ul>
+    <li>No analytics, telemetry, or tracking of any kind</li>
+    <li>No accounts, no server, no data collection</li>
+    <li>No selling or sharing of data — there is no data to sell</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions or issues:
+  <a href="https://github.com/vizkid/savage/issues">github.com/vizkid/savage/issues</a></p>
+</div>
+</body>
+</html>

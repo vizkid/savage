@@ -1,13 +1,17 @@
 <!doctype html>
 <meta charset="utf-8">
 <style>
-  body { font: 13px system-ui, sans-serif; width: 220px; margin: 0; padding: 12px; }
+  body { font: 13px system-ui, sans-serif; width: 240px; margin: 0; padding: 12px; }
   label { display: block; margin-bottom: 6px; font-weight: 600; }
-  input { width: 100%; box-sizing: border-box; padding: 5px 7px; font: inherit; }
-  #hint { color: #666; margin-top: 6px; }
+  input[type="number"] { width: 100%; box-sizing: border-box; padding: 5px 7px; font: inherit; }
+  .hint { color: #666; margin-top: 6px; }
+  .row { display: flex; gap: 8px; align-items: flex-start; margin: 14px 0 0; font-weight: 600; }
+  .row input { margin-top: 2px; }
 </style>
 <label for="px">Output size (px, longest side)</label>
 <input id="px" type="number" min="256" max="8192" step="1" placeholder="2048">
-<div id="hint">256–8192 · empty = 2048</div>
+<div class="hint">256–8192 · empty = 2048</div>
+<label class="row"><input type="checkbox" id="allsites"><span>Fetch dragged SVGs from any site</span></label>
+<div class="hint">Off: drags work from sites that allow cross-origin requests (Wikipedia does). On: grants access to all sites, used only to fetch URLs you drag.</div>
 <script src="config.js"></script>
 <script src="popup.js"></script>

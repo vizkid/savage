@@ -32,7 +32,7 @@ That's the whole product. If the clipboard or drop has no SVG, the extension doe
 - No onboarding, accounts, or analytics. UI is the toast plus one config panel: a toolbar popup with a single "output px" field (added to MVP scope 2026-07-22 at owner's request).
 - No support for `.svg` files *copied* from Finder/Explorer (the async clipboard API cannot read arbitrary files). Dragging that same file in works instead; say so in the README.
 - No drop-at-*cursor* placement. Dropped SVGs auto-place via a synthetic paste (Slides accepts untrusted paste events — prototyped and confirmed during acceptance), which lands at Slides' default paste position, not the exact drop coordinates.
-- No Chrome Web Store packaging. Loads unpacked via `chrome://extensions`.
+- ~~No Chrome Web Store packaging.~~ *(Scoped in 2026-07-22: store submission kit lives in `store/` — see [Store packaging](#store-packaging). Unpacked loading still works.)*
 - No Firefox/Safari.
 
 ## Architecture
@@ -55,7 +55,7 @@ No offscreen document. No build step, no framework, no dependencies. Plain JS.
 
 - `manifest_version: 3`
 - `permissions`: `["clipboardRead", "clipboardWrite", "storage"]` (`storage` for the output-px setting)
-- `host_permissions`: `["<all_urls>"]` — needed for exactly one thing: fetching the SVG when the user drags an image from another website (the drag payload is a URL, not the file; fetching it cross-origin requires host permission, routed through a minimal service worker). This is a personal unpacked extension, so the broad grant is an acceptable cost for making the most common drag scenario work. If this ever goes to the Web Store, revisit.
+- **No required host permissions.** Dragged-URL fetches run in the service worker under plain CORS: Wikimedia's upload host allows it, and wiki `File:` pages are resolved through the MediaWiki API (`origin=*`, CORS-open — the `Special:FilePath` redirect chain is *not* CORS-viable; its 302 hop lacks the header). Other sites work when they permit cross-origin requests. `optional_host_permissions: ["<all_urls>"]` backs an off-by-default popup toggle ("fetch dragged SVGs from any site") for sites that don't; requests must originate from an extension page with a gesture, which is why the toggle lives in the popup and not the content script. This replaced the original blanket `host_permissions` grant for Web Store review (2026-07-22).
 - `content_scripts`: match `https://docs.google.com/*`, inject `config.js`, `rasterize.js`, `content.js` at `document_idle`, **`all_frames: true` + `match_origin_as_fallback: true`** — Slides routes keyboard input through a hidden same-origin iframe (`docs-texteventtarget-iframe`); keydown fired inside an iframe never propagates to the top window's listeners, so triggers must be registered in every frame. The key-event iframe is `about:blank`, which URL match patterns alone never inject into — `match_origin_as_fallback` (Chrome 105+) is what actually gets the script in there. *(Confirmed by spike: without it, focus/keydown triggers are completely dead when the editor has focus.)* Chrome requires the match pattern's path to be `*` when using `match_origin_as_fallback`, so the Slides-only restriction is enforced in code instead: the content script bails immediately unless `window.top.location.pathname` starts with `/presentation/` (about:blank frames are same-origin, so `window.top` is readable).
 - `background.service_worker`: `sw.js`, only role is the cross-origin SVG fetch
 
@@ -82,7 +82,7 @@ On drop, inspect `dataTransfer` in this order and take the first match:
 
 1. **File**: an entry in `dataTransfer.files` with type `image/svg+xml` or a `.svg` extension → read as text. (Covers dragging a file from Finder/Explorer, and closes the gap the clipboard API leaves for copied files.)
 2. **Markup**: `text/plain` passing the same strict `<svg` prefix rule as paste → use directly. (Covers dragging selected SVG code.)
-3. **URL**: `text/uri-list` ending in `.svg` or `text/html` whose only content is an `<img>` with an `.svg` src → message `sw.js` to fetch it, expect SVG back (validated with the same strict prefix rule — an HTML page from a URL that merely *ends* in `.svg` is rejected). (Covers dragging an SVG image from another web page — the drag payload is a URL, not pixels.) `sw.js` rewrites Wikipedia/Wikimedia `…/wiki/File:X.svg` description-page URLs to `…/wiki/Special:FilePath/X.svg`, which redirects to the actual file — so dragging from Commons pages and Wikipedia article thumbnails works (added 2026-07-22 after acceptance testing).
+3. **URL**: `text/uri-list` ending in `.svg` or `text/html` whose only content is an `<img>` with an `.svg` src → message `sw.js` to fetch it, expect SVG back (validated with the same strict prefix rule — an HTML page from a URL that merely *ends* in `.svg` is rejected). (Covers dragging an SVG image from another web page — the drag payload is a URL, not pixels.) `sw.js` resolves Wikipedia/Wikimedia `…/wiki/File:X.svg` description-page URLs to the actual file via the MediaWiki API (`prop=imageinfo`, `origin=*`) — so dragging from Commons pages and Wikipedia article thumbnails works without any host permission (added 2026-07-22 after acceptance testing; switched from `Special:FilePath` to the API when host permissions were dropped for the store build).
 
 If any rule matches: `preventDefault()` + `stopImmediatePropagation()` (the native drop would fail anyway), convert through the same `rasterizeSvg` pipeline, write PNG + original markup to the clipboard, then auto-place: the top frame posts the PNG blob to the key-event iframe's content script, which dispatches a synthetic `ClipboardEvent('paste')` (DataTransfer + File) on its focused element. Slides handles it despite `isTrusted: false`; `defaultPrevented` on the dispatched event is the success signal (400ms timeout → fallback). Success toast "SVG placed"; fallback toast "SVG converted — press Ctrl/Cmd+V to place it".
 
@@ -143,7 +143,7 @@ Preserving the text means a later paste into a code editor still yields the SVG 
 | SVG references external resources (caught by pre-scan) | Error toast: "SVG uses external images" |
 | Clipboard read rejected (no gesture/focus) | Silent no-op, retry on next trigger |
 | Clipboard write rejected | Error toast |
-| Dragged URL fetch fails (network, 404, not SVG) | Error toast: "Couldn't fetch that SVG" |
+| Dragged URL fetch fails (network, 404, not SVG) | Error toast: "Couldn't fetch that SVG" + reason; a CORS block suggests enabling the "any site" popup toggle |
 | Non-SVG drop (PNG, text, etc.) | Untouched, native Slides behavior |
 
 Never throw uncaught. Never block or modify Slides' own behavior in any other way.
@@ -179,10 +179,15 @@ Incidental findings, already folded in above: the key-event iframe is `about:bla
 12. Drag an SVG onto a slide from each of: a raw `.svg` URL opened in a tab, a Wikimedia Commons `File:` page, and a Wikipedia article thumbnail (link target is the `File:` page, rewritten via `Special:FilePath`) → fetched, converted, auto-placed.
 13. Drag a PNG or JPEG onto a slide → extension does nothing, native drop works as stock.
 14. Set output px to 1024 in the popup → paste is 1024 longest side; clear the field → paste is 2048 again.
+15. With "any site" off, drag an SVG image from a non-CORS site → error toast names the block and points at the popup toggle; enable the toggle (Chrome prompts once) → the same drag converts.
 
 ## Definition of done
 
-All 14 acceptance tests pass on current Chrome stable, loaded unpacked. Total code under ~500 lines. No console errors on docs.google.com with the extension idle.
+All 15 acceptance tests pass on current Chrome stable, loaded unpacked.
+
+## Store packaging
+
+`store/LISTING.md` holds the complete dashboard kit: descriptions, single-purpose statement, per-permission justifications, and data-usage answers. `store/build.sh` zips exactly the runtime files + icons. Privacy policy is served at <https://vizkid.github.io/savage/privacy.html> (GitHub Pages, `docs/`). Icons are the amber star at 16/32/48/128. Owner steps: $5 developer registration, upload zip, paste listing, submit. Total code under ~500 lines. No console errors on docs.google.com with the extension idle.
 
 ## Future (explicitly not now)
 

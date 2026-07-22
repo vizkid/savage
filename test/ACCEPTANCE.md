@@ -23,5 +23,6 @@ a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_L
 | 12 | Drag an SVG image onto a slide from: (a) the raw SVG URL above opened in a tab, (b) a Commons `File:` page, (c) a Wikipedia article thumbnail | All three: fetched via service worker (wiki pages rewritten through `Special:FilePath`), converted, auto-placed |
 | 13 | Drag a PNG or JPEG onto a slide | Extension does nothing; native drop works as stock |
 | 14 | Click toolbar icon → set output px to 1024 → paste an SVG; then clear the field → paste again | First paste is 1024 longest side; second is back to 2048 |
+| 15 | With "any site" off, drag an SVG image from a non-CORS site; then enable the popup toggle and retry | First: error toast naming the cross-origin block; after enabling (Chrome prompts once): same drag converts |
 
 Also: with the extension loaded and idle, the Slides console shows no errors.

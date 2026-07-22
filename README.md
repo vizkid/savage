@@ -9,8 +9,13 @@ locally and nothing leaves your machine.
 ## Install
 
 1. `chrome://extensions` → enable **Developer mode** → **Load unpacked** → pick this folder.
+   (Web Store submission kit is in `store/` — pending review.)
 2. Open a Google Slides deck. The first conversion may trigger **one** clipboard
    permission prompt — click Allow; it never asks again.
+
+SaVaGe requests no site access by default. Dragged web images are fetched under
+CORS (Wikipedia/Wikimedia work out of the box); for sites that block that,
+enable "fetch dragged SVGs from any site" in the toolbar popup.
 
 ## Use
 
