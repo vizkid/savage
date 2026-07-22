@@ -1,4 +1,4 @@
-# SaVaGe: Convert SVGs to PNGs for Google Slides (MVP Spec)
+# Savage: Convert SVGs to PNGs for Google Slides (MVP Spec)
 
 **Owner:** viz · **Last updated:** 2026-07-22 · **Status:** built and accepted (paste, drop, auto-place, config panel all verified live); doc reflects as-built behavior
 

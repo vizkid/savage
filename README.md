@@ -1,4 +1,4 @@
-# SaVaGe: Convert SVGs to PNGs for Google Slides
+# Savage: Convert SVGs to PNGs for Google Slides
 
 Google Slides can't paste or drop SVGs. This extension fixes that: copy an SVG
 anywhere (markup or image) or drag one into a slide, and it lands as a
@@ -13,7 +13,7 @@ locally and nothing leaves your machine.
 2. Open a Google Slides deck. The first conversion may trigger **one** clipboard
    permission prompt. Click Allow; it never asks again.
 
-SaVaGe requests no site access by default. Dragged web images are fetched under
+Savage requests no site access by default. Dragged web images are fetched under
 CORS (Wikipedia/Wikimedia work out of the box); for sites that block that,
 enable "fetch dragged SVGs from any site" in the toolbar popup.
 

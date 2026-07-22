@@ -5,7 +5,7 @@ Everything the dashboard asks for, in order. Upload `savage-<version>.zip`
 
 ## Basics
 
-- **Name:** SaVaGe
+- **Name:** Savage
 - **Short description** (≤132 chars):
   Convert SVGs to PNGs for Google Slides. Copy or drag SVGs in and they arrive as high-res transparent PNGs.
 - **Category:** Workflow & Planning (or Tools)
@@ -17,7 +17,7 @@ Everything the dashboard asks for, in order. Upload `savage-<version>.zip`
 
 Google Slides has no SVG support: paste one and you get markup in a text box.
 The vector-preserving workaround involves format converters and a PowerPoint
-import. SaVaGe takes the trade: pixels, in exchange for convenience.
+import. Savage takes the trade: pixels, in exchange for convenience.
 
 Copy an SVG anywhere (markup, a Figma "Copy as SVG", an SVG image) and paste
 into Slides: it lands as a sharp transparent PNG, 2048 px on the longest
