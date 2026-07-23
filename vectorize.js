@@ -329,45 +329,98 @@ function vecEmitPath(segments, matrix) {
   return { ops, coords };
 }
 
-// Slides fills freeforms evenodd. A nonzero-rule path whose same-winding
-// subpaths overlap would gain a hole it doesn't have in SVG → reject.
-// Winding/bbox use segment anchor points; sign comparison is affine-invariant.
-function vecCheckFillRule(segments) {
+// Flatten M/L/C/Z segments into per-subpath point rings (cubics sampled at a
+// fixed resolution — only used for overlap topology, not the emitted path).
+function vecSubpathRings(segments) {
   const subs = [];
   let cur = null;
+  let px = 0;
+  let py = 0;
   for (const seg of segments) {
     if (seg[0] === 'M') {
-      cur = { pts: [[seg[1], seg[2]]] };
+      cur = [[seg[1], seg[2]]];
       subs.push(cur);
-    } else if (cur && seg[0] !== 'Z') {
-      cur.pts.push([seg[seg.length - 2], seg[seg.length - 1]]);
+      px = seg[1];
+      py = seg[2];
+    } else if (seg[0] === 'L' && cur) {
+      cur.push([seg[1], seg[2]]);
+      px = seg[1];
+      py = seg[2];
+    } else if (seg[0] === 'C' && cur) {
+      const [x0, y0] = [px, py];
+      for (let k = 1; k <= 12; k++) {
+        const t = k / 12;
+        const a = 1 - t;
+        cur.push([
+          a * a * a * x0 + 3 * a * a * t * seg[1] + 3 * a * t * t * seg[3] + t * t * t * seg[5],
+          a * a * a * y0 + 3 * a * a * t * seg[2] + 3 * a * t * t * seg[4] + t * t * t * seg[6],
+        ]);
+      }
+      px = seg[5];
+      py = seg[6];
     }
   }
-  if (subs.length < 2) return;
-  for (const s of subs) {
-    let area = 0;
-    const pts = s.pts;
-    for (let i = 0; i < pts.length; i++) {
-      const [x1, y1] = pts[i];
-      const [x2, y2] = pts[(i + 1) % pts.length];
-      area += x1 * y2 - x2 * y1;
-    }
-    s.sign = Math.sign(area);
-    s.bbox = pts.reduce(
-      (b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)],
-      [Infinity, Infinity, -Infinity, -Infinity]
-    );
+  return subs.filter((s) => s.length >= 3);
+}
+
+function vecRingSign(pts) {
+  let area = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % pts.length];
+    area += x1 * y2 - x2 * y1;
   }
-  for (let i = 0; i < subs.length; i++) {
-    for (let j = i + 1; j < subs.length; j++) {
-      const a = subs[i].bbox;
-      const b = subs[j].bbox;
-      const overlap = a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
-      if (overlap && subs[i].sign !== 0 && subs[i].sign === subs[j].sign) {
-        vecReject('nonzero fill with same-winding overlapping subpaths');
+  return Math.sign(area);
+}
+
+// True geometric overlap of two rings (Clipper intersection with non-trivial
+// area), not just bounding-box touch.
+function vecRingsOverlap(a, b) {
+  const S = 100;
+  const toPath = (pts) => pts.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) }));
+  const c = new ClipperLib.Clipper();
+  c.AddPath(toPath(a), ClipperLib.PolyType.ptSubject, true);
+  c.AddPath(toPath(b), ClipperLib.PolyType.ptClip, true);
+  const sol = new ClipperLib.Paths();
+  c.Execute(ClipperLib.ClipType.ctIntersection, sol,
+    ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
+  return sol.some((p) => Math.abs(ClipperLib.Clipper.Area(p)) > S);
+}
+
+// Slides fills freeforms evenodd, but SVG default is nonzero: same-winding
+// overlapping subpaths union under nonzero yet notch under evenodd. Detect a
+// GENUINE overlap (real intersection, not bbox touch — else adjacent
+// glyphs/bars false-trigger).
+function vecSameWindingOverlap(segments) {
+  const rings = vecSubpathRings(segments).map((pts) => ({ pts, sign: vecRingSign(pts) }));
+  if (rings.length < 2) return false;
+  for (let i = 0; i < rings.length; i++) {
+    for (let j = i + 1; j < rings.length; j++) {
+      if (rings[i].sign !== 0 && rings[i].sign === rings[j].sign &&
+          vecRingsOverlap(rings[i].pts, rings[j].pts)) {
+        return true;
       }
     }
   }
+  return false;
+}
+
+// Union a nonzero-fill path's subpaths into evenodd-safe M/L/Z rings (Clipper,
+// as with glyphs). Flattens curves — acceptable at slide scale, and only used
+// on the rare union-idiom path that would otherwise notch.
+function vecNormalizeFill(segments) {
+  const S = 100;
+  const paths = vecSubpathRings(segments).map((pts) =>
+    pts.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) })));
+  const clean = ClipperLib.Clipper.SimplifyPolygons(paths, ClipperLib.PolyFillType.pftNonZero);
+  const out = [];
+  for (const ring of clean) {
+    if (ring.length < 3) continue;
+    out.push(['M', ring[0].X / S, ring[0].Y / S]);
+    for (let i = 1; i < ring.length; i++) out.push(['L', ring[i].X / S, ring[i].Y / S]);
+    out.push(['Z']);
+  }
+  return out;
 }
 
 // <text> → glyph-outline segments via the resolved face. Rejects the text
@@ -487,7 +540,19 @@ async function vecConvert(svgText, opts) {
 
   const commands = [];
   for (const shape of shapes) {
-    const { ops, coords } = vecEmitPath(shape.segments, shape.matrix);
+    // Union genuine same-winding overlaps so they don't notch under Slides'
+    // evenodd fill. A stroked union-idiom path would stroke the merged outline
+    // (not each subpath), so that rare case falls back to PNG instead.
+    let segments = shape.segments;
+    const isFilled = segments[0][0] === 'M' &&
+      !(segments.length === 2 && segments[1][0] === 'L');
+    if (!shape.isText && isFilled && shape.paint.fill !== 'none' &&
+        (shape.paint['fill-rule'] || 'nonzero') !== 'evenodd' &&
+        vecSameWindingOverlap(segments)) {
+      if (shape.paint.stroke !== 'none') vecReject('stroked union-idiom path');
+      segments = vecNormalizeFill(segments);
+    }
+    const { ops, coords } = vecEmitPath(segments, shape.matrix);
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -514,8 +579,8 @@ async function vecConvert(svgText, opts) {
     };
     const fill = shape.paint.fill;
     const fillAlpha = (shape.paint.alphaMul || 1) * alphaOf('fill-opacity');
-    const fillsArea = shape.segments[0][0] === 'M' &&
-      !(shape.segments.length === 2 && shape.segments[1][0] === 'L'); // bare <line> never fills
+    const fillsArea = segments[0][0] === 'M' &&
+      !(segments.length === 2 && segments[1][0] === 'L'); // bare <line> never fills
     if (fill === 'none' || !fillsArea) {
       vecStyleSet(style, 14, 0);
     } else if (/^url\(/.test(fill)) {
@@ -548,11 +613,6 @@ async function vecConvert(svgText, opts) {
       const det = Math.abs(shape.matrix[0] * shape.matrix[3] - shape.matrix[1] * shape.matrix[2]);
       vecStyleSet(style, 19, vecColor(shape.paint.stroke));
       vecStyleSet(style, 22, Math.round(width * Math.sqrt(det)));
-    }
-
-    if (!shape.isText && (shape.paint['fill-rule'] || 'nonzero') !== 'evenodd' &&
-        fill !== 'none' && fillsArea) {
-      vecCheckFillRule(shape.segments);
     }
 
     commands.push([3, vecFreshId(), 138, [1, 0, 0, 1, minX, minY], style, 'p']);

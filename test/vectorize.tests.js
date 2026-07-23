@@ -328,9 +328,34 @@ t('vec: nonzero donut (opposite winding) converts — same result under evenodd'
   assert(String(path12(s).ops) === '0,2,1,6,5,0,0,2,1,6,5,0');
 });
 
-t('vec: nonzero union (same-winding overlap) → null, Slides would punch a hole', async () => {
-  const svg = V('<path fill="#f00" d="M0 0 H60 V60 H0 Z M30 30 H90 V90 H30 Z"/>');
-  assert((await svgToSliceClip(svg)) === null, 'must fall back to PNG');
+t('vec: nonzero union (same-winding overlap) is merged, not notched', async () => {
+  // Two overlapping squares under nonzero = one L/plus-shaped solid. Clipper
+  // unions them into an evenodd-safe outline (one ring, no interior hole).
+  const s = await one(V('<path fill="#f00" d="M0 0 H60 V60 H0 Z M30 30 H90 V90 H30 Z"/>'));
+  const moves = opPairs(path12(s).ops).filter(([op]) => op === 0).length;
+  assert(moves === 1, `union must be one merged ring, got ${moves} (would notch)`);
+});
+
+t('vec: STROKED same-winding union → null (stroke-on-union differs)', async () => {
+  const svg = V('<path fill="#f00" stroke="#000" d="M0 0 H60 V60 H0 Z M30 30 H90 V90 H30 Z"/>');
+  assert((await svgToSliceClip(svg)) === null, 'stroked union-idiom must fall back to PNG');
+});
+
+t('vec: same-winding subpaths with only touching bboxes convert (no false reject)', async () => {
+  // Two disjoint squares whose bounding boxes overlap in the corner region but
+  // whose fills never touch — the bug that killed the IBM / JPMC logos.
+  const s = await one(V('<path fill="#f00" d="M0 0 H40 V40 H0 Z M50 30 H90 V70 H50 Z"/>'));
+  const moves = opPairs(path12(s).ops).filter(([op]) => op === 0).length;
+  assert(moves === 2, `both subpaths must survive, got ${moves}`);
+});
+
+t('vec: many same-winding non-overlapping subpaths (logo wordmark) convert', async () => {
+  // Five adjacent bars, touching bboxes, no real overlap — must not reject.
+  let d = '';
+  for (let i = 0; i < 5; i++) d += `M${i * 12} 0 H${i * 12 + 10} V50 H${i * 12} Z `;
+  const s = await one(V(`<path fill="#1f70c1" d="${d.trim()}"/>`, 'viewBox="0 0 70 50"'));
+  const moves = opPairs(path12(s).ops).filter(([op]) => op === 0).length;
+  assert(moves === 5, `all 5 bars must survive, got ${moves}`);
 });
 
 // --- out of scope → null ---
