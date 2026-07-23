@@ -64,6 +64,13 @@ function testFaceUri() {
     new opentype.Glyph({ name: 'C', unicode: 67, advanceWidth: 700, path: cPath }),
     new opentype.Glyph({ name: 'D', unicode: 68, advanceWidth: 700, path: dPath }),
     new opentype.Glyph({ name: 'E', unicode: 69, advanceWidth: 700, path: ePath }),
+    // 'F': ink wider (0..500) than its advance (300) → consecutive F's overlap,
+    // mimicking a connecting-script join. The whole-run union must merge them.
+    new opentype.Glyph({ name: 'F', unicode: 70, advanceWidth: 300, path: (() => {
+      const p = new opentype.Path();
+      sq(p, 0, 0, 500, 600);
+      return p;
+    })() }),
   ];
   const font = new opentype.Font({
     familyName: 'TestFace',
@@ -118,11 +125,22 @@ t('text: text-anchor middle/end shift by advance width', async () => {
   assert(near(end.xf[4], PX + 17145, 3), `end tx ${end.xf[4]}`); // (50-6+1)px = 45px
 });
 
-t('text: two glyphs → one shape, two subpaths, advance-spaced', async () => {
+t('text: two non-touching glyphs → two subpaths, advance-spaced', async () => {
   const s = await one(textSvg('<text x="5" y="20" font-family="TestFace" font-size="10">AA</text>'));
   const { ops } = path12(s);
-  assert(String(ops) === '0,2,1,6,5,0,0,2,1,6,5,0', `ops ${ops}`);
+  const moves = opPairs(ops).filter(([op]) => op === 0).length;
+  assert(moves === 2, `disjoint glyphs must stay separate, got ${moves} (ops ${ops})`);
   assert(near(sv(s, 8), 3810, 3), `8 = ${sv(s, 8)} (6..16px wide)`); // second A at +6px advance
+});
+
+t('text: connecting-script overlap (advance < ink) unions across glyphs', async () => {
+  // 'FF': second F's advance (3px) lands its ink inside the first → the run
+  // must merge into ONE outline, no notch at the join.
+  const s = await one(textSvg('<text x="0" y="20" font-family="TestFace" font-size="10">FF</text>'));
+  const { ops } = path12(s);
+  const moves = opPairs(ops).filter(([op]) => op === 0).length;
+  assert(moves === 1, `overlapping glyphs must union, got ${moves} subpaths (ops ${ops})`);
+  assert(near(sv(s, 8), 3048, 3), `8 = ${sv(s, 8)} (0..8px merged width)`); // 0..500 + 300..800 = 0..800u
 });
 
 t('text: stroke and inherited font props apply', async () => {
