@@ -539,6 +539,7 @@ async function vecConvert(svgText, opts) {
   if (!shapes.length) vecReject('nothing convertible');
 
   const commands = [];
+  const childIds = [];
   for (const shape of shapes) {
     // Union genuine same-winding overlaps so they don't notch under Slides'
     // evenodd fill. A stroked union-idiom path would stroke the merged outline
@@ -615,7 +616,17 @@ async function vecConvert(svgText, opts) {
       vecStyleSet(style, 22, Math.round(width * Math.sqrt(det)));
     }
 
-    commands.push([3, vecFreshId(), 138, [1, 0, 0, 1, minX, minY], style, 'p']);
+    const id = vecFreshId();
+    childIds.push(id);
+    commands.push([3, id, 138, [1, 0, 0, 1, minX, minY], style, 'p']);
+  }
+
+  // Wrap a multi-shape paste in one group so it drags/scales/selects as a
+  // single object (structure per research/dumps p-group: children keep
+  // parent 'p'; the group command carries the child-id list). Cmd 2 =
+  // [id, childIds, identity affine, parent].
+  if (childIds.length > 1) {
+    commands.push([2, vecFreshId(), childIds, [1, 0, 0, 1, 0, 0], 'p']);
   }
 
   const data = {

@@ -440,6 +440,26 @@ t('vec: two elements → two shapes, ids consistent across resolved/unresolved',
     'unresolved must clone resolved');
 });
 
+t('vec: multi-shape paste is wrapped in one group (cmd 2) over every child', async () => {
+  const { data, shapes } = unwrap(await svgToSliceClip(
+    V('<rect x="0" y="0" width="10" height="10" fill="#f00"/>' +
+      '<rect x="20" y="0" width="10" height="10" fill="#0f0"/>' +
+      '<circle cx="40" cy="5" r="4" fill="#00f"/>', 'viewBox="0 0 60 10"')));
+  const groups = data.resolved.filter((c) => c[0] === 2);
+  assert(groups.length === 1, `expected one group, got ${groups.length}`);
+  const g = groups[0];
+  assert(JSON.stringify(g[2]) === JSON.stringify(shapes.map((s) => s.id)),
+    'group children must list every shape id in order');
+  assert(JSON.stringify(g[3]) === '[1,0,0,1,0,0]' && g[4] === 'p', 'identity transform, parent p');
+  assert(data.resolved[data.resolved.length - 1][0] === 2, 'group is the last command');
+  shapes.forEach((s) => assert(s.parent === 'p', 'children keep parent p'));
+});
+
+t('vec: single-shape paste has no group command', async () => {
+  const { data } = unwrap(await svgToSliceClip(V('<rect width="10" height="10" fill="#f00"/>')));
+  assert(data.resolved.every((c) => c[0] !== 2), 'no group for a lone shape');
+});
+
 t('vec: envelope is the sanitized template, ids/guid fresh per call', async () => {
   const svg = V('<rect x="0" y="0" width="10" height="10" fill="#f00"/>');
   const a = await svgToSliceClip(svg);
