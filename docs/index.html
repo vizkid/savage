@@ -112,98 +112,25 @@
   .brand { color: var(--accent); }
   .muted { color: var(--muted); }
 
-  /* ---- demo ---- */
-  .demo {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  .cta {
+    display: flex;
+    align-items: center;
     gap: 16px;
-    margin: 40px 0 10px;
+    flex-wrap: wrap;
+    margin: 30px 0 4px;
   }
-  .tile {
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background:
-      repeating-conic-gradient(var(--checker) 0% 25%, transparent 0% 50%) 0 0 / 22px 22px,
-      var(--card);
-    padding: 14px;
+  .btn {
+    display: inline-block;
+    background: var(--accent);
+    color: #1a1200;
+    font-weight: 650;
+    text-decoration: none;
+    padding: 12px 22px;
+    border-radius: 8px;
   }
-  .tile canvas {
-    display: block;
-    width: 100%;
-    height: auto;
-  }
-  .tile .pixelated { image-rendering: pixelated; }
-  .tile figcaption {
-    margin-top: 10px;
-    color: var(--muted);
-  }
-  .tile figcaption .no { color: var(--accent-deep); }
-  figure { margin: 0; }
-  .demo-caption {
-    max-width: 62ch;
-    color: var(--muted);
-    margin: 10px 0 0;
-    font-size: .95rem;
-  }
+  .btn:hover { background: var(--accent-deep); color: #fff; }
+  .cta-note { color: var(--muted); font-size: .95rem; }
 
-  /* ---- sections ---- */
-  section { margin-top: clamp(48px, 8vw, 80px); }
-  h2 {
-    font-family: 'Bricolage', system-ui, sans-serif;
-    font-weight: 800;
-    font-size: 1.7rem;
-    letter-spacing: -.01em;
-    margin: 0 0 20px;
-  }
-
-  ol.steps {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 14px;
-    max-width: 68ch;
-  }
-  ol.steps li {
-    display: grid;
-    grid-template-columns: 44px 1fr;
-    gap: 14px;
-    align-items: baseline;
-  }
-  ol.steps .n {
-    font-family: 'Silkscreen', monospace;
-    color: var(--accent);
-    font-size: 20px;
-  }
-  ol.steps b { font-weight: 650; }
-
-  .features {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 16px;
-  }
-  .feature {
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--card);
-    padding: 18px 18px 14px;
-  }
-  .feature h3 {
-    font-family: 'Bricolage', system-ui, sans-serif;
-    font-weight: 800;
-    font-size: 1.05rem;
-    margin: 0 0 8px;
-  }
-  .feature p { margin: 0; color: var(--muted); font-size: .95rem; }
-
-  .install {
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--card);
-    padding: 20px 22px;
-    max-width: 640px;
-  }
-  .install ol { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
   code, kbd {
     font: 0.9em ui-monospace, "SF Mono", Menlo, monospace;
     background: color-mix(in srgb, var(--ink) 7%, transparent);
@@ -221,7 +148,7 @@
   footer p { margin: 4px 0; }
 
   a { color: var(--accent-deep); }
-  a:focus-visible, canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
   @media (prefers-reduced-motion: no-preference) {
     .wrap > * {
@@ -240,129 +167,36 @@
 <body>
 
 <div class="wrap">
-  <p class="px eyebrow">Savage <span class="dot">·</span> Chrome extension <span class="dot">·</span> MV3, unpacked</p>
+  <p class="px eyebrow">Savage <span class="dot">·</span> Chrome extension for Google Slides</p>
 
   <h1>Google Slides made a <em>savage</em> out of you.</h1>
 
   <p class="lede">
-    Slides has no vector support: paste an SVG and you get its markup in a text box.
-    The workaround that preserves your vectors involves a WMF converter and a
-    PowerPoint import. It works. It's just not how you wanted to spend the afternoon.
+    Brand logos increasingly ship as SVG. Drop one into a deck and Slides hands you
+    back a box of XML: it has never supported vectors. So exporting became a manual
+    chore: open Figma, Illustrator, or Affinity, save a PNG at the right size, come
+    back, drag it in. Every logo, every slide.
   </p>
   <p class="lede">
     <b class="brand">Savage</b>
-    takes the trade: pixels, in exchange for convenience. Copy or drag any SVG into
-    Slides and it lands as a transparent PNG, 2048&nbsp;px on the longest side.
-    At that size, nobody's asking.
+    takes the trade: pixels for convenience. Copy or drag any SVG straight into Slides
+    and it lands as a transparent PNG, 2048&nbsp;px on the longest side, sharp at
+    full-slide size. Drops place themselves, pastes are one <kbd>⌘V</kbd>, and it all
+    runs on your machine.
   </p>
 
-  <div class="demo" role="img" aria-label="The same star drawn twice: crisp on the left, coarsely pixelated on the right.">
-    <figure class="tile">
-      <canvas id="crisp" width="640" height="400"></canvas>
-      <figcaption class="px">Your logo, at home</figcaption>
-    </figure>
-    <figure class="tile">
-      <canvas id="savage" class="pixelated" width="32" height="20"></canvas>
-      <figcaption class="px">Your logo, in Slides <span class="no">(before)</span></figcaption>
-    </figure>
+  <div class="cta">
+    <a class="btn" href="https://chromewebstore.google.com/detail/REPLACE_WITH_EXTENSION_ID">Add to Chrome</a>
+    <span class="cta-note">Free. One click, then open any deck.</span>
   </div>
-  <p class="demo-caption">
-    After Savage both tiles look identical. 2048&nbsp;px on the longest side is the
-    whole trick. The checkerboard stays checkerboard: backgrounds come out transparent.
-  </p>
-
-  <section>
-    <h2>How it works</h2>
-    <ol class="steps">
-      <li>
-        <span class="n">1</span>
-        <span><b>Copy or drag an SVG.</b> Markup from an editor, a <code>.svg</code> file
-        from Finder, a Figma layer via “Copy as SVG”, a logo dragged off Wikipedia.</span>
-      </li>
-      <li>
-        <span class="n">2</span>
-        <span><b>Savage converts on arrival.</b> The moment you land in Slides it spots the
-        SVG and rasterizes it in-page: transparent PNG, aspect preserved, no server, no wait.</span>
-      </li>
-      <li>
-        <span class="n">3</span>
-        <span><b>It lands.</b> Drops place themselves on the slide, no keypress. Pastes are
-        one <kbd>⌘V</kbd>. And your clipboard still holds the original markup for code editors.</span>
-      </li>
-    </ol>
-  </section>
-
-  <section>
-    <h2>What you get</h2>
-    <div class="features">
-      <div class="feature">
-        <h3>Drops place themselves</h3>
-        <p>Dropped SVGs are converted and inserted automatically; the “now press
-        paste” step doesn’t exist.</p>
-      </div>
-      <div class="feature">
-        <h3>Wikipedia included</h3>
-        <p>Drag straight from articles and Commons pages. File-description URLs get
-        rewritten to the real SVG behind them.</p>
-      </div>
-      <div class="feature">
-        <h3>One setting</h3>
-        <p>Longest side, 256–8192&nbsp;px, in the toolbar popup. Empty means 2048.
-        That’s the entire settings surface.</p>
-      </div>
-      <div class="feature">
-        <h3>Private</h3>
-        <p>Everything runs locally. The only network request is fetching a URL you
-        just dragged. No storage of your content, no analytics, no accounts.</p>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Install</h2>
-    <div class="install">
-      <ol>
-        <li>Clone or download the repo.</li>
-        <li>Open <code>chrome://extensions</code>, switch on <b>Developer mode</b>.</li>
-        <li><b>Load unpacked</b> → pick the folder.</li>
-        <li>Open a Slides deck. Chrome asks for clipboard access <b>once</b>. Allow it, and you're done.</li>
-      </ol>
-    </div>
-  </section>
 
   <footer>
-    <p class="px">Slides only · Chrome only · No store · No tracking</p>
-    <p>The vectors don't survive the trip. At 2048&nbsp;px, you stop minding.</p>
+    <p class="px">Slides only · Chrome only · No tracking</p>
+    <p>Add it, then open a deck. Chrome asks for clipboard access once so conversion
+    can happen before you paste. The vectors don't survive the trip. At 2048&nbsp;px,
+    you stop minding.</p>
   </footer>
 </div>
-
-<script>
-  (() => {
-    function star(ctx, w, h, color) {
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = color;
-      const cx = w / 2, cy = h * 0.54, rO = h * 0.5, rI = rO * 0.42;
-      ctx.beginPath();
-      for (let i = 0; i < 10; i++) {
-        const r = i % 2 ? rI : rO;
-        const a = -Math.PI / 2 + (i * Math.PI) / 5;
-        ctx[i ? 'lineTo' : 'moveTo'](cx + r * Math.cos(a), cy + r * Math.sin(a));
-      }
-      ctx.closePath();
-      ctx.fill();
-    }
-    function draw() {
-      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#E8940A';
-      for (const id of ['crisp', 'savage']) {
-        const c = document.getElementById(id);
-        star(c.getContext('2d'), c.width, c.height, accent);
-      }
-    }
-    draw();
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
-    new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-  })();
-</script>
 
 </body>
 </html>
