@@ -67,24 +67,48 @@ Style keys observed:
 | 60, 61 | gradient: type, `[[color, position], ...]` stops |
 | 73, 145 | unknown (gradient dump) |
 
-Path ops (stream of `op, coordCount` pairs over a flat coord array):
+Path ops (stream of `op, coordCount` pairs over a flat coord array). Pinned
+2026-07-23 by crafting single-op shapes and replaying (experiment C):
 
-- `0` = moveTo (2 coords)
-- `1` = curve chain (coord count varies: 10, 12, 14 observed; NOT always a
-  multiple of 6, so semantics are not plain cubics; needs pinning)
-- `5` = closePath (0 coords)
-- lineTo opcode: not yet observed (need a polyline capture)
+| op | coords | meaning | syncs |
+|---|---|---|---|
+| 0 | 2 | moveTo | yes |
+| 1 | 2n | polyline: straight lines through n points | yes |
+| 3 | 6 | **cubicTo: 2 control points + endpoint (SVG `C`)** | yes |
+| 5 | 0 | closePath | yes |
+| 2, 4 | — | also render curves but the doc fails server save (400); wrong coord grammar, ignore | **no** |
+| 6, 7 | — | unknown opcodes, silently ignored (no-op, no crash) | n/a |
+
+**Complete SVG path coverage:** M→0, L→1, C→3, Z→5. Q decomposes to one cubic,
+A (elliptical arc) to a few cubics — so op 0/1/3/5 render any SVG path. op 1
+with `smooth` style key (14) = 0 is straight; the freeform captures with 14=1
+were Slides' own spline-smoothing of hand-drawn points, not needed for
+conversion (we emit explicit cubics via op 3).
+
+Fallback if exact cubics ever misbehave: flatten every SVG curve to short op-1
+line segments. Always syncs, visually indistinguishable at slide scale.
+
+## Resolved during the spike
+
+1. lineTo = op 1 (straight chain). ✓
+2. cubicTo = op 3, 6 coords, syncs. ✓
+3. `unresolved` = `resolved` (concrete colors) parses fine. ✓ (experiment c-unres)
+4. Envelope fields (`dih`, `ds`, `cses`, `sm`) are load-bearing — a bare
+   `{data, dct}` envelope silently drops; copying a template envelope works.
+   The synthetic control shape only rendered once wearing the real envelope.
 
 ## Open questions before the converter spec
 
-1. lineTo opcode (capture a Polyline).
-2. Exact op-1 semantics (craft payloads with hand-built coord streams and see
-   what renders; replay is now a test harness we control).
-3. Whether a raw cubic-bezier opcode exists (SVG conversion wants exact
-   cubics, not smoothed splines).
-4. Can `dih` be omitted/faked in generated payloads?
-5. Does `unresolved` = `resolved` (all concrete colors) parse?
-6. Fill/stroke edge cases: none/transparent, opacity, stroke dash.
+1. `dih`: template value works (copied from a real dump). Untested whether a
+   fabricated one persists across sessions — spec should ship a captured
+   template envelope and revisit only if pastes fail on other machines.
+2. Does op 3 chain (multiple cubics in one op run) or is it one-cubic-per-op?
+   Nail during the build with the replay harness.
+3. Fill/stroke edge cases: none/transparent (SVG `fill="none"`), opacity,
+   stroke width scaling, stroke dash.
+4. Multi-subpath SVGs (multiple `M` in one path) and fill-rule.
+5. Coordinate space: page units look like EMU-ish; derive the SVG→units scale
+   from viewBox during the build.
 
 ## Tools
 
