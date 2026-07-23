@@ -18,15 +18,52 @@ function testFaceUri() {
     p.lineTo(x0, y1);
     p.close();
   };
+  const rsq = (p, x0, y0, x1, y1) => { // reversed winding: a counter/hole
+    p.moveTo(x0, y0);
+    p.lineTo(x0, y1);
+    p.lineTo(x1, y1);
+    p.lineTo(x1, y0);
+    p.close();
+  };
   const aPath = new opentype.Path();
   sq(aPath, 100, 0, 500, 600);
   const bPath = new opentype.Path();
   sq(bPath, 0, 0, 400, 400);
   sq(bPath, 200, 200, 600, 600);
+  // 'C': the join-notch regression — the second contour partially overlaps
+  // and STARTS INSIDE the first (like 'x'/'t'/'g' stroke joins). Same
+  // winding → must union, never be misread as a hole.
+  const cPath = new opentype.Path();
+  sq(cPath, 0, 0, 600, 600);
+  sq(cPath, 100, -100, 500, 500); // font y-up: -100 extends below baseline
+  // 'D': a real counter — opposite winding, fully inside → must stay a hole.
+  const dPath = new opentype.Path();
+  sq(dPath, 0, 0, 600, 600);
+  rsq(dPath, 200, 200, 400, 400);
+  // 'E': a keyhole counter — ONE contour that tunnels through a zero-width
+  // slit to draw the counter reversed (how Roboto draws 'e'). Must split at
+  // the retraced points into outer + hole; raw emission cracks under evenodd.
+  const ePath = new opentype.Path();
+  ePath.moveTo(0, 0);
+  ePath.lineTo(600, 0);
+  ePath.lineTo(600, 600);
+  ePath.lineTo(0, 600);
+  ePath.lineTo(0, 300);
+  ePath.lineTo(200, 300); // tunnel in
+  ePath.lineTo(200, 400); // counter wound OPPOSITE to the outer (real keyhole)
+  ePath.lineTo(400, 400);
+  ePath.lineTo(400, 200);
+  ePath.lineTo(200, 200);
+  ePath.lineTo(200, 300); // retrace: tunnel out
+  ePath.lineTo(0, 300);
+  ePath.close();
   const glyphs = [
     new opentype.Glyph({ name: '.notdef', unicode: 0, advanceWidth: 500, path: new opentype.Path() }),
     new opentype.Glyph({ name: 'A', unicode: 65, advanceWidth: 600, path: aPath }),
     new opentype.Glyph({ name: 'B', unicode: 66, advanceWidth: 700, path: bPath }),
+    new opentype.Glyph({ name: 'C', unicode: 67, advanceWidth: 700, path: cPath }),
+    new opentype.Glyph({ name: 'D', unicode: 68, advanceWidth: 700, path: dPath }),
+    new opentype.Glyph({ name: 'E', unicode: 69, advanceWidth: 700, path: ePath }),
   ];
   const font = new opentype.Font({
     familyName: 'TestFace',
@@ -111,6 +148,35 @@ t('text: resolver override returning null → PNG fallback', async () => {
 t('text: weight maps to nearest available face', async () => {
   const s = await one(textSvg('<text x="5" y="20" font-family="TestFace" font-size="10" font-weight="700">A</text>'));
   assert(String(path12(s).ops) === '0,2,1,6,5,0', 'bold request served by the only face');
+});
+
+t('text: partial-overlap contour starting inside a sibling unions, no notch', async () => {
+  // Regression: the 'g'/'x'/'t' join artifact — containment-based grouping
+  // misread these as holes and punched gashes at every stroke joint.
+  const s = await one(textSvg('<text x="0" y="20" font-family="TestFace" font-size="10">C</text>'));
+  const { ops } = path12(s);
+  const moves = opPairs(ops).filter(([op]) => op === 0).length;
+  assert(moves === 1, `expected one merged outline, got ${moves} subpaths (ops ${ops})`);
+  // bbox: x 0..600u = 6px wide; y -100..600u → 7px tall
+  assert(near(sv(s, 8), 2286, 3) && near(sv(s, 9), 2667, 3), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
+});
+
+t('text: keyhole counter splits into outer + hole (no evenodd crack)', async () => {
+  const s = await one(textSvg('<text x="0" y="20" font-family="TestFace" font-size="10">E</text>'));
+  const { ops, coords } = path12(s);
+  const moves = opPairs(ops).filter(([op]) => op === 0).length;
+  assert(moves === 2, `expected outer + hole subpaths, got ${moves} (ops ${ops})`);
+  // the zero-width tunnel must be gone: no coordinate pair may repeat within a subpath
+  const pairs = new Set();
+  for (let i = 0; i < coords.length; i += 2) pairs.add(`${coords[i]},${coords[i + 1]}`);
+  assert(pairs.size === coords.length / 2, 'tunnel points still retraced');
+});
+
+t('text: opposite-winding counter survives as a hole', async () => {
+  const s = await one(textSvg('<text x="0" y="20" font-family="TestFace" font-size="10">D</text>'));
+  const { ops } = path12(s);
+  const moves = opPairs(ops).filter(([op]) => op === 0).length;
+  assert(moves === 2, `expected outer + hole subpaths, got ${moves} (ops ${ops})`);
 });
 
 // --- rejection ---

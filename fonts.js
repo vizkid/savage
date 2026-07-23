@@ -71,13 +71,15 @@ function cssWeight(w) {
 }
 
 // --- glyph outlines → evenodd-safe rings ---
-// TrueType glyphs routinely build letterforms from overlapping same-winding
-// contours (Roboto's 'H' is two stems + a crossbar). Slides fills freeforms
-// evenodd, so raw contours would render with notches at every overlap. Fix:
-// flatten curves to polylines and boolean-union the contours (vendored
-// martinez), yielding disjoint outers + holes that render identically under
-// any fill rule. Sub-pixel flattening is invisible at slide scale and op-1
-// polylines always sync (research/FINDINGS.md).
+// Fonts are authored for the NONZERO fill rule and exploit it freely:
+// overlapping same-winding contours (Roboto 'H' = stems + crossbar) and
+// self-intersecting "keyhole" counters (Roboto 'e' tunnels through a
+// zero-width slit). Slides fills freeforms EVENODD, so raw glyph outlines
+// render with notches and hairline cracks. Fix: flatten curves to polylines
+// and normalize through Clipper's SimplifyPolygons with nonzero fill —
+// the reference primitive for exactly this — yielding rings that render
+// identically under any fill rule. Sub-pixel flattening is invisible at
+// slide scale and op-1 polylines always sync (research/FINDINGS.md).
 
 function vecFlattenSteps(chord) {
   return Math.max(2, Math.min(64, Math.ceil(chord / 1.5)));
@@ -130,86 +132,42 @@ function flattenGlyphCommands(commands) {
       py = c.y;
     }
   }
+  const out = [];
   for (const cont of contours) {
-    const f = cont[0];
-    const l = cont[cont.length - 1];
-    if (cont.length > 1 && Math.abs(f[0] - l[0]) < 1e-9 && Math.abs(f[1] - l[1]) < 1e-9) cont.pop();
+    const clean = [];
+    for (const pt of cont) {
+      const prev = clean[clean.length - 1];
+      if (!prev || Math.abs(prev[0] - pt[0]) > 1e-6 || Math.abs(prev[1] - pt[1]) > 1e-6) clean.push(pt);
+    }
+    const f = clean[0];
+    const l = clean[clean.length - 1];
+    if (clean.length > 1 && Math.abs(f[0] - l[0]) < 1e-6 && Math.abs(f[1] - l[1]) < 1e-6) clean.pop();
+    if (clean.length >= 3) out.push(clean);
   }
-  return contours.filter((c) => c.length >= 3);
+  return out;
 }
 
-function ringSignedArea(pts) {
-  let area = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const [x1, y1] = pts[i];
-    const [x2, y2] = pts[(i + 1) % pts.length];
-    area += x1 * y2 - x2 * y1;
-  }
-  return area / 2;
-}
+// Clipper works on integers: px × 1000 keeps ~0.4 page-unit precision.
+const FONT_CLIP_SCALE = 1000;
 
-function pointInRing(pt, pts) {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const [xi, yi] = pts[i];
-    const [xj, yj] = pts[j];
-    if ((yi > pt[1]) !== (yj > pt[1]) &&
-        pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-// Contours → GeoJSON-style polygons (outer ring + holes) by containment
-// depth: even depth = outer, odd = hole of the smallest containing outer.
-function contoursToPolygons(contours) {
-  const rings = contours.map((pts) => ({ pts, area: Math.abs(ringSignedArea(pts)) }));
-  for (const r of rings) {
-    r.depth = 0;
-    for (const o of rings) {
-      if (o !== r && o.area > r.area && pointInRing(r.pts[0], o.pts)) r.depth++;
-    }
-  }
-  const close = (pts) => [...pts, pts[0]];
-  const polys = [];
-  for (const r of rings) {
-    if (r.depth % 2 === 0) {
-      r.poly = [close(r.pts)];
-      polys.push(r.poly);
-    }
-  }
-  for (const r of rings) {
-    if (r.depth % 2 !== 0) {
-      let best = null;
-      for (const o of rings) {
-        if (o.poly && o.area > r.area && pointInRing(r.pts[0], o.pts)) {
-          if (!best || o.area < best.area) best = o;
-        }
-      }
-      if (best) best.poly.push(close(r.pts));
-    }
-  }
-  return polys;
-}
-
-// opentype path commands → M/L/Z segments: flatten, group holes, union.
+// opentype path commands → M/L/Z segments, normalized from the font's
+// nonzero fill semantics to evenodd-safe rings via Clipper.
 function glyphCommandsToSegments(commands) {
-  const polys = contoursToPolygons(flattenGlyphCommands(commands));
-  if (!polys.length) return [];
-  let multi = [polys[0]];
-  for (let i = 1; i < polys.length; i++) multi = martinez.union(multi, [polys[i]]);
+  const contours = flattenGlyphCommands(commands);
+  if (!contours.length) return [];
+  const paths = contours.map((c) => c.map(([x, y]) => ({
+    X: Math.round(x * FONT_CLIP_SCALE),
+    Y: Math.round(y * FONT_CLIP_SCALE),
+  })));
+  const clean = ClipperLib.Clipper.SimplifyPolygons(paths, ClipperLib.PolyFillType.pftNonZero);
   const segments = [];
-  for (const poly of multi) {
-    for (const ring of poly) {
-      const pts = ring.slice();
-      if (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] &&
-          pts[0][1] === pts[pts.length - 1][1]) pts.pop();
-      if (pts.length < 3) continue;
-      segments.push(['M', pts[0][0], pts[0][1]]);
-      for (let i = 1; i < pts.length; i++) segments.push(['L', pts[i][0], pts[i][1]]);
-      segments.push(['Z']);
+  for (const ring of clean) {
+    if (ring.length < 3) continue;
+    segments.push(['M', ring[0].X / FONT_CLIP_SCALE, ring[0].Y / FONT_CLIP_SCALE]);
+    for (let i = 1; i < ring.length; i++) {
+      segments.push(['L', ring[i].X / FONT_CLIP_SCALE, ring[i].Y / FONT_CLIP_SCALE]);
     }
+    segments.push(['Z']);
   }
   return segments;
 }

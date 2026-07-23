@@ -297,11 +297,16 @@ async function vecTextSegments(ctx, el, paint) {
     const w = font.getAdvanceWidth(content, size, { kerning: true });
     ax = anchor === 'middle' ? x - w / 2 : x - w;
   }
-  const glyphPath = font.getPath(content, ax, y, size, { kerning: true });
+  // Flatten + union PER GLYPH (fonts.js): overlapping same-winding contours
+  // would notch under Slides' evenodd fill, but boolean ops carry float-snap
+  // risk in thin regions — so glyphs whose contours don't overlap must never
+  // pass through the clipper. Per-glyph scope keeps disjoint letterforms out.
   try {
-    // Flatten + union (fonts.js): overlapping same-winding glyph contours
-    // would notch under Slides' evenodd fill.
-    return glyphCommandsToSegments(glyphPath.commands);
+    const segments = [];
+    for (const glyphPath of font.getPaths(content, ax, y, size, { kerning: true })) {
+      segments.push(...glyphCommandsToSegments(glyphPath.commands));
+    }
+    return segments;
   } catch (err) {
     vecReject(`glyph union failed: ${err.message}`);
   }

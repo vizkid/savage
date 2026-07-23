@@ -26,7 +26,7 @@
   "content_scripts": [
     {
       "matches": ["https://docs.google.com/*"],
-      "js": ["config.js", "rasterize.js", "pathdata.js", "vendor/opentype.min.js", "vendor/martinez.umd.js", "vendor/roboto-regular.js", "fonts.js", "vector-template.js", "vectorize.js", "content.js", "iframe-paste.js"],
+      "js": ["config.js", "rasterize.js", "pathdata.js", "vendor/opentype.min.js", "vendor/clipper.js", "vendor/roboto-regular.js", "fonts.js", "vector-template.js", "vectorize.js", "content.js", "iframe-paste.js"],
       "run_at": "document_idle",
       "all_frames": true,
       "match_origin_as_fallback": true
