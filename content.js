@@ -74,10 +74,11 @@
     return { blob };
   }
 
-  // Experimental auto-place: dispatch a synthetic paste (isTrusted=false)
-  // carrying the PNG into Slides' key-event iframe. Works only if Slides'
-  // handler ignores isTrusted; the clipboard fallback always remains.
-  function autoPaste(blob) {
+  // Auto-place: dispatch a synthetic paste (isTrusted=false, proven accepted)
+  // into Slides' key-event iframe. payload: {blob} posts a PNG file; {vector}
+  // posts the custom-flavor map from svgToSliceClip (the async clipboard API
+  // cannot carry custom types, so this channel is the only vector delivery).
+  function autoPaste(payload) {
     const iframe = document.querySelector('iframe.docs-texteventtarget-iframe');
     if (!iframe || !iframe.contentWindow) return Promise.resolve(false);
     return new Promise((resolve) => {
@@ -97,7 +98,7 @@
         window.removeEventListener('message', onMsg);
       }
       window.addEventListener('message', onMsg);
-      iframe.contentWindow.postMessage({ [MSG]: { kind: 'paste', blob } }, ORIGIN);
+      iframe.contentWindow.postMessage({ [MSG]: { kind: 'paste', ...payload } }, ORIGIN);
     });
   }
 
@@ -149,9 +150,20 @@
       }
       svgText = resp.text;
     }
+    // Native vectors first: convert to editable Slides shapes when the SVG is
+    // in scope; anything else falls through to the proven PNG pipeline.
+    const vector = svgToSliceClip(svgText);
+    if (vector) {
+      const placedVector = await autoPaste({ vector });
+      debug('vector autoPaste handled:', placedVector);
+      if (placedVector) {
+        toast('SVG pasted as editable shapes');
+        return;
+      }
+    }
     const result = await convertAndWrite(svgText, null);
     if (!result) return;
-    const placed = await autoPaste(result.blob);
+    const placed = await autoPaste({ blob: result.blob });
     debug('autoPaste handled:', placed);
     toast(placed ? 'SVG placed' : `SVG converted. Press ${PASTE_KEY} to place it`);
   }
@@ -186,7 +198,11 @@
       let handled = false;
       try {
         const dt = new DataTransfer();
-        dt.items.add(new File([m.blob], 'image.png', { type: 'image/png' }));
+        if (m.vector) {
+          for (const [type, value] of Object.entries(m.vector)) dt.setData(type, value);
+        } else {
+          dt.items.add(new File([m.blob], 'image.png', { type: 'image/png' }));
+        }
         const ev = new ClipboardEvent('paste', {
           clipboardData: dt,
           bubbles: true,

@@ -1,8 +1,7 @@
 'use strict';
 
-// Unit tests for rasterize.js + config.js. No framework: t() registers a case,
-// the runner writes PASS/FAIL to #results and a machine-readable summary to
-// window.__testResults for dev-browser to read.
+// Unit tests for rasterize.js + config.js. Registration + runner live in
+// harness.js (shared with vectorize.tests.js).
 
 const NS = 'xmlns="http://www.w3.org/2000/svg"';
 
@@ -25,35 +24,6 @@ const FIX = {
   fragmentUse:
     `<svg ${NS} viewBox="0 0 10 10"><defs><rect id="r" width="5" height="5" fill="red"/></defs><use href="#r"/></svg>`,
 };
-
-const cases = [];
-function t(name, fn) {
-  cases.push({ name, fn });
-}
-function assert(cond, msg) {
-  if (!cond) throw new Error(msg || 'assertion failed');
-}
-async function expectReject(promise, pattern) {
-  try {
-    await promise;
-  } catch (err) {
-    assert(pattern.test(err.message), `rejected, but message "${err.message}" !~ ${pattern}`);
-    return;
-  }
-  throw new Error('expected rejection, but resolved');
-}
-async function pixelsOf(blob) {
-  const bmp = await createImageBitmap(blob);
-  const c = document.createElement('canvas');
-  c.width = bmp.width;
-  c.height = bmp.height;
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(bmp, 0, 0);
-  return { ctx, width: bmp.width, height: bmp.height };
-}
-function alphaAt(ctx, x, y) {
-  return ctx.getImageData(x, y, 1, 1).data[3];
-}
 
 // --- sizing ---
 
@@ -165,29 +135,3 @@ t('DEFAULT_OUTPUT_PX is 2048; getOutputPx falls back to it outside the extension
   assert(DEFAULT_OUTPUT_PX === 2048, `DEFAULT_OUTPUT_PX=${typeof DEFAULT_OUTPUT_PX}`);
   assert((await getOutputPx()) === 2048, 'getOutputPx did not fall back to default');
 });
-
-// --- runner ---
-
-(async () => {
-  const results = document.getElementById('results');
-  let pass = 0;
-  let fail = 0;
-  for (const { name, fn } of cases) {
-    const li = document.createElement('li');
-    try {
-      await fn();
-      li.className = 'pass';
-      li.textContent = name;
-      pass++;
-    } catch (err) {
-      li.className = 'fail';
-      li.textContent = `${name}: ${err.message}`;
-      fail++;
-    }
-    results.appendChild(li);
-  }
-  const summary = `${pass} passed, ${fail} failed, ${cases.length} total`;
-  document.getElementById('summary').textContent = summary;
-  document.title = fail ? `FAIL: ${summary}` : `PASS: ${summary}`;
-  window.__testResults = { pass, fail, total: cases.length, done: true };
-})();
