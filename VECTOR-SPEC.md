@@ -38,9 +38,11 @@ stroke, and gradients map nearly 1:1 to style keys.
 | nested groups, `transform` | flatten transforms into each shape's affine matrix |
 
 **Out (fall back to PNG):** `<text>`, `<image>`, `<use>` of external refs,
-patterns, masks, clip-paths, filters, `fill-rule="evenodd"` if it proves
-unmappable, and any SVG whose external-resource pre-scan already trips today.
-The converter returns `null` and the PNG path takes over.
+patterns, masks, clip-paths, filters, partial opacity (`opacity`/
+`fill-opacity`/`stroke-opacity` ≠ 1, rgba colors), off-center radial
+gradients, nonzero-rule paths whose same-winding subpaths overlap (Slides
+fills evenodd), and any SVG whose external-resource pre-scan already trips
+today. The converter returns `null` and the PNG path takes over.
 
 ## Behavior
 
@@ -57,26 +59,38 @@ we must.
 
 ## The converter (pure, testable)
 
-`svgToSliceClip(svgText, { envelope }) → payloadObject | null`
+`svgToSliceClip(svgText) → flavors | null` (flavors = `{type: string}` map
+ready for `DataTransfer.setData`, same shape as a capture dump)
 
-Mirrors `rasterize.js`'s shape: pure function, no extension APIs, unit-tested in
-the browser harness. Pipeline:
+Mirrors `rasterize.js`'s shape: pure function, no extension APIs, unit-tested
+in the browser harness.
+
+**Strategy: template morph, not assembly** (pivoted 2026-07-23, probes L/M).
+Fully-synthetic payloads crash the editor for unknown reasons; morphing a real
+captured dump in place is proven across every probe. The repo ships one
+sanitized capture (a single freeform shape: envelope + data skeleton + html
+flavor, ids/guid randomization applied at paste time, `clip-id`/`edrk`/`edi`
+stripped — cross-deck validity proven). Pipeline:
 
 1. Parse with `DOMParser`; reject (→ null) on parse error or any out-of-scope
    element.
-2. Walk the tree, accumulating `transform` matrices; convert each in-scope
-   element to a shape command with a flattened affine matrix.
-3. Map geometry to op 0/1/3/5 streams; map paint to style keys.
-4. Resolve coordinates: SVG user units → Slides page units via a scale derived
-   from `viewBox` (units look EMU-ish; exact factor pinned in the build).
-5. Assemble `data` = `{resolved, unresolved, autotext_content, …}` with
-   randomized shape IDs (forces Slides' parse path, per FINDINGS). `unresolved`
-   = a clone of `resolved` (concrete colors — verified safe).
-6. Wrap in a **template envelope** (captured; `dih`/`ds`/`cses`/`sm` are
-   load-bearing). Ship the template in the repo; server keys `edrk`/`edi` are
-   dropped.
+2. Walk the tree, accumulating `transform` matrices; flatten each in-scope
+   element to an absolute path (transforms baked into coordinates).
+3. Map geometry to op 0/1/3/5 streams (op-3 runs may chain 2n cubic coords —
+   proven); scale SVG user units × **381 units/CSS px** (36576/inch); shape
+   transform is `[1,0,0,1,tx,ty]` with keys 8/9 = the shape's path bbox.
+4. Map paint to style keys: 15/19/22 colors + weight, 14:0 fill-off, 18:0
+   stroke-off (drop 19), 60/61/62 (+73/145) gradients.
+5. Morph the template: clone its shape command per SVG element (fresh ids,
+   same id in `resolved` + `unresolved`), patch **type → 138** (154
+   spline-smooths op-1 chains), swap geometry + paint keys in place.
+6. Emit the template's flavor set with fresh ids/guid every call.
 
 Return `null` at the first unsupported feature — never emit a partial shape.
+Fill rule: Slides fills freeforms **evenodd** (winding-independent). SVG
+evenodd maps natively; a nonzero SVG whose same-winding subpaths overlap
+(union idiom) would mis-render — detect via signed-area winding + bbox
+overlap and return null.
 
 ## Delivery
 
@@ -100,13 +114,17 @@ accepts it despite `isTrusted:false` (proven). Success = `defaultPrevented`;
   client render).
 - **Regression:** unsupported SVGs still produce the correct PNG.
 
-## Open questions (pin during build)
+## Open questions — all resolved (probes 2026-07-23, see research/FINDINGS.md)
 
-1. Exact SVG-unit → page-unit scale (derive from viewBox + a measured capture).
-2. Does op 3 chain multiple cubics in one run, or one op per cubic?
-3. Radial gradient center/radius/focal mapping (simple centered first).
-4. Fill alpha / `fill-opacity` / `fill="none"` style-key encoding.
-5. Whether a fabricated `dih` persists cross-session (template value works now).
+1. Scale: **381 units/CSS px = 36576/inch** (= EMU/25), pinned three ways.
+2. op 3 **chains** (one run, 2n coords) — and one-per-op also works.
+3. Radial gradient center/focal: still unprobed → simple centered radials
+   only; off-center radials → PNG fallback.
+4. `fill="none"` → key 14:0; stroke none → 18:0 + drop 19. Partial alpha
+   (`fill-opacity` ≠ 0/1, rgba) never probed → PNG fallback this iteration.
+5. Envelope: staleness debunked; the shipped template's `dih` works
+   **cross-deck** into brand-new decks. (From-scratch assembly, however,
+   crashes the editor — hence the template-morph design.)
 
 ## Non-goals (this iteration)
 

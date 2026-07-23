@@ -96,6 +96,117 @@ conversion (we emit explicit cubics via op 3).
 Fallback if exact cubics ever misbehave: flatten every SVG curve to short op-1
 line segments. Always syncs, visually indistinguishable at slide scale.
 
+## Coordinate space (pinned 2026-07-23, probes P1a/P1b)
+
+**36576 units per inch = 381 units per CSS px** (= EMU/25; explains the
+default stroke weight 381 = exactly 1px). Confirmed three independent ways
+from a 2"×1" rect at (1", 0.5") and a 1"×1" freeform:
+
+- Preset shapes sit on a **120000-unit unit square**; the transform scales it:
+  `a = widthUnits/120000` (0.6096 = 2×36576/120000), `d = heightUnits/120000`.
+- `ty` = 18288 = 0.5 × 36576 exactly.
+- Freeform on-page size = keys 8/9 × transform scale = 36576 (1") on both axes.
+
+Freeform path coords are in the **same units**: keys 8/9 are the path bounding
+box, the transform maps path space → page. Identity transform + pre-scaled
+coords is proven (all crafted experiment shapes), so the converter can emit
+`[1,0,0,1,tx,ty]` and multiply every coordinate by SCALE = 381/CSS-px.
+
+Anomaly, not blocking: panel X = 1" stored `tx` 36442 (−134) on two different
+shapes, while every size and Y reading was exact. We position pasted shapes
+ourselves, so irrelevant to the converter.
+
+## Fill/stroke flags (pinned 2026-07-23, probes P3 — corrects the table above)
+
+- **Key 14 = fill on/off, not smoothing**: absent = default (on), `0` =
+  transparent fill, `1` = explicitly filled. The freeform captures' 14:1 was
+  fill-on; earlier "spline smoothing" reading was wrong. Crafted shapes with
+  14:0 rendered as outlines because their fill was off.
+- **Key 18 = stroke on/off**: absent = on, `0` = transparent stroke — and the
+  stroke color key 19 disappears entirely when off.
+- Fill color (15) persists even when fill is off. Default-styled shapes omit
+  14/18/60 altogether.
+- Key 16 (`1`) appeared only alongside a custom fill color; optional — crafted
+  fills without it render and sync.
+- Key 60 `0` = explicitly no gradient.
+
+## Shape type is (very likely) the op-1 interpreter switch — UNVERIFIED, test first
+
+With key 14 reclassified as fill (P3), the original question is reopened: what
+made op-1 chains render *smooth* in the curve captures but *straight* in the
+polyline capture, when the op streams are identical? The remaining
+differentiator is the shape type: **154 (curve captures, smoothed) vs 138
+(polyline capture, straight)**. Hypothesis: type 154 spline-smooths op-1
+anchor chains; type 138 draws them straight.
+
+Supporting evidence from the first crafted-payload session (chat-only until
+now — this was the missing learning):
+
+- The single fully-synthetic shape that ever rendered (experiment b-envelope)
+  was a **type 154** op-1 square, open path — and it rendered as a *distorted
+  semicircular blob*, then the editor crashed. A spline through a square's 4
+  anchors is exactly that blob. The distortion was misattributed to data
+  corruption at the time.
+- Every sync-clean crafted shape (the entire c-* series, including the op
+  hunt) inherited **type 138** from the real polyline dump. Corners stayed
+  corners.
+- The c-type probe (real polyline data, type flipped 138→154) "worked" but
+  nobody checked whether it rendered smoothed — consistent with the
+  hypothesis, not against it.
+
+**Consequences for crafting:** emit type 138 for all line/cubic work until an
+A/B probe (same op-1 square, once as 138 once as 154) settles it. `craft.js`'s
+`shape()` previously defaulted to 154 — experiments D/E/F built on that
+default would produce smoothed blobs instead of clean squares/donuts, which
+reads as "synthetic shapes come out wrong." Default now flipped to 138.
+Note op 3 cubics rendered + synced on a 138 template (c-op3); op 3 under 154
+is untested.
+
+## From-scratch synthesis: current record (honest version)
+
+No fully-synthetic payload has ever been proven sync-clean. The record:
+
+- bare envelope + synthetic data → silently dropped (exp A, b-minimal)
+- real envelope + synthetic data (type 154) → rendered distorted, then the
+  editor crashed with an error dialog (b-envelope) — now attributed to the
+  type-154 smoothing above, not to the data assembly itself
+- real dump morphed (ids/guid randomized, keys stripped, geometry/style
+  swapped in place) → renders and syncs, every time (c-* series)
+
+So "synthesis is broken" was never established — it was only ever tested
+wearing type 154. Experiment F (single synthetic square, real envelope graft)
+should be re-run with type 138 before concluding the converter must morph a
+template rather than assemble.
+
+## Morph-recipe probes (experiment M, 2026-07-23 afternoon — build gates, all green)
+
+The from-scratch `payload()` skeleton crashes the editor even with type 138
+(f-solo) — cause unknown, not worth chasing. **The converter design is
+template morph**: take a real captured dump, randomize ids, strip
+clip-id/edrk/edi, swap geometry + style in place (the c-series recipe,
+re-validated today as L1/L2). On that foundation:
+
+| probe | result |
+|---|---|
+| m-multi | **Multi-shape works**: shape command duplicated with fresh id → two shapes, one paste, syncs. The cmd-17 tail is optional (freeform dumps carry none). |
+| m-multi | **Type patch 154→138 works**: straight sides. L2 (type kept 154) drew the same op-1 square with curved sides → 154 spline-smooths op-1 chains, 138 draws straight. Smoothing hypothesis CONFIRMED (f-solo's crash was unrelated). |
+| m-chain | **op 3 chains**: one run, 12 coords = two cubics, renders + syncs. Emitter can chain all cubics in a single run. |
+| m-donut | **Multi-subpath works**: two subpaths in one path stream, opposite winding → hole, fill + stroke correct. |
+| m-donut-same | **Fill rule is evenodd**: same-winding inner subpath also punches a hole (winding-independent). |
+
+Fill-rule consequence: SVG `fill-rule="evenodd"` maps natively. Default
+(nonzero) SVGs match evenodd except same-winding *overlapping* subpaths used
+as unions — converter should detect (signed-area winding + bbox overlap
+heuristic) and fall back to PNG for that rare case.
+
+Envelope staleness: **debunked**. L1 replayed an hour-old dump clean, and real
+cross-account pastes work at any age. The earlier "goes stale" note came from
+runs whose real failure was type-154 smoothing / synthetic-skeleton crashes.
+**Cross-deck: proven.** A morphed payload (template from deck A, including its
+`dih`) pastes into a brand-new deck B and syncs. A static shipped template
+envelope is viable. Reload check also passed: every experiment-M paste
+survived, so the whole morph recipe is server-valid.
+
 ## Resolved during the spike
 
 1. lineTo = op 1 (straight chain). ✓
