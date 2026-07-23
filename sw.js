@@ -41,7 +41,9 @@ async function ensureFontUaRule() {
       id: FONT_UA_RULE_ID,
       condition: {
         urlFilter: '||fonts.googleapis.com/css2',
-        resourceTypes: ['xmlhttprequest'],
+        // A service-worker fetch is typed 'other', not 'xmlhttprequest';
+        // list both so the rule actually fires on our request.
+        resourceTypes: ['xmlhttprequest', 'other'],
       },
       action: {
         type: 'modifyHeaders',
@@ -58,14 +60,20 @@ async function ensureFontUaRule() {
 async function cssToTtfUrl(family, weight) {
   const fam = encodeURIComponent(family).replace(/%20/g, '+');
   const url = `https://fonts.googleapis.com/css2?family=${fam}:wght@${weight}`;
+  let sawWoff2 = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     await ensureFontUaRule().catch(() => {});
     const res = await fetch(url, { credentials: 'omit', cache: 'no-store' });
     if (!res.ok) throw new Error(`fonts API HTTP ${res.status}`);
-    const ttf = parseGoogleFontsCss(await res.text());
+    const css = await res.text();
+    const ttf = parseGoogleFontsCss(css);
     if (ttf) return ttf;
+    sawWoff2 = /\.woff2/.test(css);
+    console.log('[svg-paste] css2 returned no TTF (woff2:', sawWoff2, ') attempt', attempt);
   }
-  throw new Error('no TTF url (unknown family, or host access not granted)');
+  throw new Error(sawWoff2
+    ? 'css2 served woff2 — UA rewrite rule did not apply to the SW fetch'
+    : 'no TTF url (unknown family, or host access not granted)');
 }
 
 async function fetchGoogleFont(family, weight) {
