@@ -1,6 +1,6 @@
 # Savage: Native Vector Paste (spec)
 
-**Owner:** viz · **Last updated:** 2026-07-23 · **Status:** research complete, pre-build
+**Owner:** viz · **Last updated:** 2026-07-23 · **Status:** shipped (drop/URL flow; commit 41a3d80)
 
 ## Problem / solution
 
@@ -44,18 +44,20 @@ gradients, nonzero-rule paths whose same-winding subpaths overlap (Slides
 fills evenodd), and any SVG whose external-resource pre-scan already trips
 today. The converter returns `null` and the PNG path takes over.
 
-## Behavior
+## Behavior (as shipped)
 
-Auto: on every paste/drop of an SVG, try `svgToSliceClip(svgText)` first.
+On every **drop or dragged-URL** arrival of an SVG, `handleSvgPayload` tries
+`svgToSliceClip(svgText)` first.
 
-- Returns a payload → deliver it via synthetic paste (the existing auto-place
-  channel, extended to write the custom clipboard type into the `DataTransfer`).
-  Toast: "SVG pasted as editable shapes".
-- Returns `null` (unsupported feature encountered) → run the current
-  `rasterizeSvg` → PNG pipeline unchanged. Toast: today's "SVG ready" / "placed".
+- Returns a flavor map → delivered via synthetic paste (the auto-place
+  channel, extended: `{vector}` payloads `setData` each custom flavor instead
+  of attaching a PNG `File`). Toast: "SVG pasted as editable shapes".
+- Returns `null` (unsupported feature) or delivery times out (400ms) → the
+  `rasterizeSvg` → PNG pipeline runs unchanged, with today's toasts.
 
-No new UI, no toggle. One seamless behavior; vectors when we can, pixels when
-we must.
+The **copy → Cmd+V flow still delivers PNG**: the async clipboard API cannot
+carry custom types, so that flow needs trusted-paste interception (see
+Future). No new UI, no toggle. Vectors when we can, pixels when we must.
 
 ## The converter (pure, testable)
 
@@ -126,8 +128,25 @@ accepts it despite `isTrusted:false` (proven). Success = `defaultPrevented`;
    **cross-deck** into brand-new decks. (From-scratch assembly, however,
    crashes the editor — hence the template-morph design.)
 
-## Non-goals (this iteration)
+## Future (concrete follow-ups)
 
-Text (Slides text-run machinery — deferred, likely never), images, filters,
-animation, and reverse (Slides → SVG). Vector paste ships alongside the PNG
-path, not replacing it.
+1. **Cmd+V clipboard flow.** `checkClipboard` stashes the vector payload when
+   it rewrites the clipboard to PNG; the key-event iframe adds a
+   capture-phase listener on *trusted* paste events — if `e.clipboardData`'s
+   `text/plain` matches the stashed source SVG, preventDefault and dispatch
+   the synthetic vector paste instead. Mismatch or no stash → native flow.
+2. **Text → curves.** Text stays out of scope as *native Slides text* (the
+   text-run schema is another reverse-engineering campaign), but converting
+   glyphs to outlines is viable: parse the font with an opentype.js-class
+   library, `font.getPath()` per glyph → the existing segment pipeline
+   (paths are paths; the format side is already proven). Constraints: needs
+   the font file (embedded data-URI `@font-face`, a bundled default, or a
+   fetched Google Font via the optional-host service worker), simple LTR
+   scripts only (no complex shaping without HarfBuzz), and pasted text is no
+   longer editable as text — same trade as Illustrator's "outline text".
+   Until then `<text>` → PNG fallback, which keeps fidelity.
+
+## Non-goals
+
+Native editable Slides text, images, filters, animation, and reverse
+(Slides → SVG). Vector paste ships alongside the PNG path, not replacing it.

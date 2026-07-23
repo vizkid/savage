@@ -27,7 +27,7 @@ That's the whole product. If the clipboard or drop has no SVG, the extension doe
 
 ## Non-goals (MVP)
 
-- No vector/native-shape paste. (Would require forging Google's internal clipboard format. Explicitly out of scope; see Future.)
+- ~~No vector/native-shape paste.~~ *(Shipped 2026-07-23: dropped/URL SVGs in scope convert to native editable shapes, PNG otherwise; see `VECTOR-SPEC.md`. The copy→Cmd+V flow still delivers PNG.)*
 - No support for Docs, Sheets, or Drawings. Slides only.
 - No onboarding, accounts, or analytics. UI is the toast plus one config panel: a toolbar popup with a single "output px" field (added to MVP scope 2026-07-22 at owner's request).
 - No support for `.svg` files *copied* from Finder/Explorer (the async clipboard API cannot read arbitrary files). Dragging that same file in works instead; say so in the README.
@@ -191,6 +191,6 @@ All 15 acceptance tests pass on current Chrome stable, loaded unpacked.
 
 ## Future (explicitly not now)
 
-- **Native vector paste** by generating Google's internal `application/x-vnd.google-docs-document-slice-clip+wrapped` clipboard payload. Requires reverse engineering the shape entity schema. Format is unsigned JSON and stable for years, so feasible, but it's a research project, not this MVP.
+- ~~**Native vector paste**~~ *(Shipped 2026-07-23 for the drop/URL flow — spec: `VECTOR-SPEC.md`, format research: `research/FINDINGS.md`. Remaining follow-ups live in VECTOR-SPEC's Future section: the Cmd+V clipboard flow via paste interception, and text-to-curves.)*
 - Drop-at-cursor coordinates: auto-place lands at Slides' default paste position. Dispatching a synthetic `drop` DragEvent at the original coordinates might place exactly at the drop point. Untested, and low value now that auto-place works.
 - Docs/Sheets support.

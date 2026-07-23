@@ -19,10 +19,16 @@ a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_L
 | 8 | Paste twice in a row in Slides | Both paste PNG; only one toast/conversion (loop guard) |
 | 9 | Copy malformed SVG (`<svg` unclosed) → focus Slides | Error toast; clipboard unchanged (paste still yields the broken text) |
 | 10 | Open a Google **Docs** document | Extension inert: no toast ever, no console errors (script injects but bails) |
-| 11 | Drag a `.svg` file from Finder onto a slide | Toast "SVG placed"; image lands with no keypress (clipboard still holds PNG + markup as fallback) |
-| 12 | Drag an SVG image onto a slide from: (a) the raw SVG URL above opened in a tab, (b) a Commons `File:` page, (c) a Wikipedia article thumbnail | All three: fetched via service worker (wiki pages rewritten through `Special:FilePath`), converted, auto-placed |
+| 11 | Drag a `.svg` file from Finder onto a slide | In-scope SVG: toast "SVG pasted as editable shapes", native shapes land. Out-of-scope: toast "SVG placed", image lands. No keypress either way |
+| 12 | Drag an SVG image onto a slide from: (a) the raw SVG URL above opened in a tab, (b) a Commons `File:` page, (c) a Wikipedia article thumbnail | All three: fetched via service worker (wiki pages rewritten through `Special:FilePath`), then vector paste when in scope, PNG otherwise |
 | 13 | Drag a PNG or JPEG onto a slide | Extension does nothing; native drop works as stock |
 | 14 | Click toolbar icon → set output px to 1024 → paste an SVG; then clear the field → paste again | First paste is 1024 longest side; second is back to 2048 |
 | 15 | With "any site" off, drag an SVG image from a non-CORS site; then enable the popup toggle and retry | First: error toast naming the cross-origin block; after enabling (Chrome prompts once): same drag converts |
 
+| 16 | Drag a multi-feature in-scope SVG (rect+stroke, circle, cubic path, evenodd donut, linear gradient — e.g. the golden fixture in `VECTOR-SPEC.md` testing notes) onto a slide | Toast "SVG pasted as editable shapes"; every shape individually selectable/editable; gradient runs the right direction; deck reloads with shapes intact (server sync, no 400 banner) |
+| 17 | Drag an SVG containing `<text>` onto a slide | PNG fallback: arrives as an image, text rendered correctly |
+| 18 | Drag an SVG with partial opacity (`fill-opacity="0.5"`) onto a slide | PNG fallback, translucency preserved in the raster |
+
 Also: with the extension loaded and idle, the Slides console shows no errors.
+Vector run 2026-07-23: 16 (golden replay + live drop) and 17 passed live; unit
+suite 53/53.
