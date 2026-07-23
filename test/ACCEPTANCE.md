@@ -27,7 +27,8 @@ a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_L
 
 | 16 | Drag a multi-feature in-scope SVG (rect+stroke, circle, cubic path, evenodd donut, linear gradient — e.g. the golden fixture in `VECTOR-SPEC.md` testing notes) onto a slide | Toast "SVG pasted as editable shapes"; every shape individually selectable/editable; gradient runs the right direction; deck reloads with shapes intact (server sync, no 400 banner) |
 | 17 | *(v2 update)* Drag an SVG containing `<text>` onto a slide | **Editable outlined-text shapes** (text-to-curves); see rows 26-27 for font-ladder cases |
-| 18 | Drag an SVG with partial opacity (`fill-opacity="0.5"`) onto a slide | PNG fallback, translucency preserved in the raster |
+| 18 | *(v2 update)* Drag an SVG with a filter (blur) onto a slide | PNG fallback, effect preserved in the raster |
+| 18b | Drag an SVG with `fill-opacity` / rgba fills onto a slide | **Native shapes with translucent fills** (style key 16); overlap shows through |
 
 ### v2: vectors by default (VECTOR2-SPEC.md)
 

@@ -126,8 +126,10 @@ ourselves, so irrelevant to the converter.
   stroke color key 19 disappears entirely when off.
 - Fill color (15) persists even when fill is off. Default-styled shapes omit
   14/18/60 altogether.
-- Key 16 (`1`) appeared only alongside a custom fill color; optional — crafted
-  fills without it render and sync.
+- **Key 16 = fill opacity** (0..1): pinned 2026-07-23 evening — a 50%
+  fill-transparency rect dumps `16: 0.5` (and the earlier custom-fill capture's
+  `16: 1` was simply "fully opaque"). Optional; absent = opaque. Stroke-alpha
+  and gradient-stop-alpha keys remain unprobed.
 - Key 60 `0` = explicitly no gradient.
 
 ## Shape type is (very likely) the op-1 interpreter switch — UNVERIFIED, test first

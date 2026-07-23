@@ -295,12 +295,42 @@ t('vec: out-of-scope features → null', async () => {
   }
 });
 
-t('vec: partial opacity → null', async () => {
+// Fill alpha is native (style key 16, pinned 2026-07-23); stroke alpha has
+// no known key yet, so anything that fades a painted stroke stays PNG.
+
+t('vec: fill-opacity → key 16', async () => {
+  const s = await one(V('<rect width="10" height="10" fill="#f00" fill-opacity="0.5"/>'));
+  assert(sv(s, 15) === '#FF0000' && near(sv(s, 16), 0.5, 0.001), `15/16 = ${sv(s, 15)}/${sv(s, 16)}`);
+});
+
+t('vec: rgba fill → color + key 16', async () => {
+  const s = await one(V('<rect width="10" height="10" fill="rgba(255,0,0,0.5)"/>'));
+  assert(sv(s, 15) === '#FF0000' && near(sv(s, 16), 0.5, 0.01), `15/16 = ${sv(s, 15)}/${sv(s, 16)}`);
+});
+
+t('vec: element opacity on unstroked shape → key 16', async () => {
+  const s = await one(V('<rect width="10" height="10" fill="#f00" opacity="0.5"/>'));
+  assert(near(sv(s, 16), 0.5, 0.001), `16 = ${sv(s, 16)}`);
+});
+
+t('vec: group opacity multiplies with fill-opacity', async () => {
+  const s = await one(V('<g opacity="0.5"><rect width="10" height="10" fill="#f00" fill-opacity="0.5"/></g>'));
+  assert(near(sv(s, 16), 0.25, 0.001), `16 = ${sv(s, 16)}`);
+});
+
+t('vec: opaque fill leaves key 16 absent', async () => {
+  const s = await one(V('<rect width="10" height="10" fill="#f00"/>'));
+  assert(sv(s, 16) === undefined, `16 = ${sv(s, 16)}`);
+});
+
+t('vec: faded painted strokes still → null', async () => {
   const cases = [
-    ['opacity', '<rect width="10" height="10" fill="#f00" opacity="0.5"/>'],
-    ['fill-opacity', '<rect width="10" height="10" fill="#f00" fill-opacity="0.5"/>'],
     ['stroke-opacity', '<rect width="10" height="10" fill="#f00" stroke="#000" stroke-opacity="0.5"/>'],
-    ['rgba fill', '<rect width="10" height="10" fill="rgba(255,0,0,0.5)"/>'],
+    ['opacity with stroke', '<rect width="10" height="10" fill="#f00" stroke="#000" opacity="0.5"/>'],
+    ['rgba stroke', '<rect width="10" height="10" fill="#f00" stroke="rgba(0,0,0,0.5)"/>'],
+    ['translucent gradient fill', '<defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/>' +
+      '<stop offset="1" stop-color="#000"/></linearGradient></defs>' +
+      '<rect width="10" height="10" fill="url(#g)" fill-opacity="0.5"/>'],
   ];
   for (const [label, inner] of cases) {
     assert((await svgToSliceClip(V(inner))) === null, `${label} must fall back to PNG`);

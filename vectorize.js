@@ -31,7 +31,7 @@ const VEC_PAINT_PROPS = [
   'font-family', 'font-size', 'font-weight', 'text-anchor', 'letter-spacing',
 ];
 const VEC_INHERITED = [
-  'fill', 'stroke', 'stroke-width', 'fill-rule',
+  'fill', 'stroke', 'stroke-width', 'fill-rule', 'fill-opacity', 'stroke-opacity',
   'font-family', 'font-size', 'font-weight', 'text-anchor', 'letter-spacing',
 ];
 
@@ -54,17 +54,35 @@ function vecReject(why) {
 }
 
 let vecColorCtx = null;
-function vecColor(str) {
+// Any CSS color → {hex, alpha} via canvas normalization.
+function vecColorAlpha(str) {
   if (!vecColorCtx) vecColorCtx = document.createElement('canvas').getContext('2d');
   vecColorCtx.fillStyle = '#000000';
   vecColorCtx.fillStyle = str;
   const v = vecColorCtx.fillStyle;
-  if (!/^#[0-9a-f]{6}$/i.test(v)) vecReject(`unsupported color ${str}`);
-  // Invalid keywords leave the reset value; catch obvious ones.
-  if (v === '#000000' && str.trim() !== '' && !/^(#0*|black|rgb\(\s*0[\s,]+0[\s,]+0\s*\))/i.test(str.trim())) {
-    vecReject(`unrecognized color ${str}`);
+  if (/^#[0-9a-f]{6}$/i.test(v)) {
+    // Invalid keywords leave the reset value; catch obvious ones.
+    if (v === '#000000' && str.trim() !== '' && !/^(#0*|black|rgb\(\s*0[\s,]+0[\s,]+0\s*\))/i.test(str.trim())) {
+      vecReject(`unrecognized color ${str}`);
+    }
+    return { hex: v.toUpperCase(), alpha: 1 };
   }
-  return v.toUpperCase();
+  const m = /^rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)$/.exec(v);
+  if (m) {
+    const hex = '#' + [m[1], m[2], m[3]]
+      .map((n) => Number(n).toString(16).padStart(2, '0').toUpperCase())
+      .join('');
+    return { hex, alpha: parseFloat(m[4]) };
+  }
+  vecReject(`unsupported color ${str}`);
+}
+
+// Strict variant for paints with no alpha channel in the format (strokes,
+// gradient stops): any translucency rejects.
+function vecColor(str) {
+  const c = vecColorAlpha(str);
+  if (c.alpha !== 1) vecReject(`translucent color ${str} unsupported here`);
+  return c.hex;
 }
 
 // Merged presentation attributes + style-attribute declarations (style wins).
@@ -107,9 +125,8 @@ function vecPreScan(root) {
       if (p[k] && p[k] !== 'none') vecReject(`${k} is out of scope`);
     }
     if (p['stroke-dasharray'] && p['stroke-dasharray'] !== 'none') vecReject('stroke-dasharray');
-    for (const k of ['opacity', 'fill-opacity', 'stroke-opacity']) {
-      if (p[k] !== undefined && parseFloat(p[k]) !== 1) vecReject(`partial ${k}`);
-    }
+    // Opacity is handled per shape: fill alpha maps to style key 16; only
+    // faded PAINTED strokes reject (no known stroke-alpha key).
   }
   return embeddedFaces;
 }
@@ -167,12 +184,18 @@ function vecGradient(doc, url) {
   return { type: 1, stops, angle: Math.atan2(y2 - y1, x2 - x1) };
 }
 
-// Inheritable paint/text state, resolved lazily so unused values never reject.
+// Inheritable paint/text state, resolved lazily so unused values never
+// reject. `opacity` is not an inherited property — it composites: each
+// element's opacity multiplies into alphaMul on the way down. (For
+// overlapping siblings under a translucent group this differs subtly from
+// true group compositing; accepted, per-shape alpha is the format's model.)
 function vecPaint(props, inherited) {
   const out = { ...inherited };
   for (const k of VEC_INHERITED) {
     if (props[k] !== undefined) out[k] = props[k];
   }
+  const opacity = props.opacity !== undefined ? parseFloat(props.opacity) : 1;
+  out.alphaMul = (inherited.alphaMul || 1) * (Number.isFinite(opacity) ? Math.min(1, Math.max(0, opacity)) : 1);
   return out;
 }
 
@@ -376,6 +399,9 @@ async function vecConvert(svgText, opts) {
     stroke: 'none',
     'stroke-width': '1',
     'fill-rule': 'nonzero',
+    'fill-opacity': '1',
+    'stroke-opacity': '1',
+    alphaMul: 1,
     'font-family': '',
     'font-size': '16',
     'font-weight': '400',
@@ -406,12 +432,18 @@ async function vecConvert(svgText, opts) {
     vecStyleSet(style, 8, maxX - minX);
     vecStyleSet(style, 9, maxY - minY);
 
+    const alphaOf = (prop) => {
+      const v = shape.paint[prop] !== undefined ? parseFloat(shape.paint[prop]) : 1;
+      return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+    };
     const fill = shape.paint.fill;
+    const fillAlpha = (shape.paint.alphaMul || 1) * alphaOf('fill-opacity');
     const fillsArea = shape.segments[0][0] === 'M' &&
       !(shape.segments.length === 2 && shape.segments[1][0] === 'L'); // bare <line> never fills
     if (fill === 'none' || !fillsArea) {
       vecStyleSet(style, 14, 0);
     } else if (/^url\(/.test(fill)) {
+      if (fillAlpha !== 1) vecReject('translucent gradient fill'); // no known key
       const g = vecGradient(doc, fill);
       vecStyleSet(style, 14, 1);
       vecStyleSet(style, 15, g.stops[0][0]);
@@ -421,14 +453,20 @@ async function vecConvert(svgText, opts) {
       if (g.type === 2) vecStyleSet(style, 73, 1);
       vecStyleSet(style, 145, 1);
     } else {
+      const c = vecColorAlpha(fill);
       vecStyleSet(style, 14, 1);
-      vecStyleSet(style, 15, vecColor(fill));
+      vecStyleSet(style, 15, c.hex);
+      const a = fillAlpha * c.alpha;
+      if (a < 1) vecStyleSet(style, 16, Math.round(a * 1000) / 1000); // key 16 = fill opacity
     }
 
     if (shape.paint.stroke === 'none') {
       vecStyleSet(style, 18, 0);
       vecStyleDelete(style, 19);
     } else {
+      if ((shape.paint.alphaMul || 1) * alphaOf('stroke-opacity') !== 1) {
+        vecReject('faded stroke'); // no known stroke-alpha key
+      }
       const width = parseFloat(shape.paint['stroke-width']);
       if (!Number.isFinite(width) || width < 0) vecReject('bad stroke-width');
       const det = Math.abs(shape.matrix[0] * shape.matrix[3] - shape.matrix[1] * shape.matrix[2]);
