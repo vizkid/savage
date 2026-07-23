@@ -1,10 +1,33 @@
 <!doctype html>
 <meta charset="utf-8">
 <style>
-  body { font: 13px system-ui, sans-serif; width: 240px; margin: 0; padding: 12px; }
+  :root {
+    color-scheme: light dark;
+    --bg: #FAFAF7;
+    --ink: #20242B;
+    --muted: #6E6A5F;
+    --line: rgba(32, 36, 43, .25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1D2026;
+      --ink: #ECE9E2;
+      --muted: #9B978C;
+      --line: rgba(236, 233, 226, .25);
+    }
+  }
+  body {
+    font: 13px system-ui, sans-serif;
+    width: 240px; margin: 0; padding: 12px;
+    background: var(--bg); color: var(--ink);
+  }
   label { display: block; margin-bottom: 6px; font-weight: 600; }
-  input[type="number"] { width: 100%; box-sizing: border-box; padding: 5px 7px; font: inherit; }
-  .hint { color: #666; margin-top: 6px; }
+  input[type="number"] {
+    width: 100%; box-sizing: border-box; padding: 5px 7px; font: inherit;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px;
+  }
+  .hint { color: var(--muted); margin-top: 6px; }
   .row { display: flex; gap: 8px; align-items: flex-start; margin: 14px 0 0; font-weight: 600; }
   .row input { margin-top: 2px; }
 </style>
