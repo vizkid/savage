@@ -1,7 +1,26 @@
 # Savage: Vectors by Default (spec)
 
-**Owner:** viz · **Last updated:** 2026-07-23 · **Status:** draft, pre-plan
+**Owner:** viz · **Last updated:** 2026-07-23 · **Status:** shipped (main @ 431a605)
 **Lineage:** extends the shipped `VECTOR-SPEC.md` (v1: drop/URL flow, no text)
+
+## Shipped state (what actually landed)
+
+All four planned milestones plus fixes surfaced during live acceptance:
+
+| Area | Shipped |
+|---|---|
+| All flows | Drop, URL, **and** copy→Cmd+V (trusted-paste interception in `iframe-paste.js`) deliver vectors |
+| Cmd+Shift+V | Delivers the PNG when the clipboard holds a Savage-converted SVG; mismatch → native paste-without-formatting |
+| Text → curves | Embedded `@font-face` → Google Fonts (css2 + legacy-UA DNR rule, resourceType `other`) → bundled Roboto. Glyph outlines normalized nonzero→evenodd via Clipper (whole run, so connecting scripts don't notch) |
+| **CSS styling** *(added)* | `<style>` class/type selectors with the full cascade (presentation < type < class < inline) — Illustrator/Figma/logo exports now convert |
+| **Fill alpha** *(added)* | `fill-opacity`/`opacity`/rgba → style key 16 (native translucent fills) |
+| **Grouping** *(added)* | Multi-shape pastes wrapped in one group (cmd 2) so they drag/scale/select as a unit |
+| Fill rule | Genuine same-winding overlaps (real intersection test, not bbox) unioned via Clipper; only stroked union-idiom paths → PNG |
+| PNG fallback | Rasterize + synthetic auto-place decoupled from the clipboard write, so a blocked write never hard-errors |
+
+Vendored: opentype.js (MIT), clipper-lib (Boost), Roboto Regular (Apache) —
+`vendor/LICENSES.md`. Unit suite 87/87; live acceptance rows 19–30.
+`#7` (size-match the hatch PNG) intentionally left as-is per owner.
 
 ## Problem / solution
 

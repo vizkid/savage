@@ -49,7 +49,12 @@ Commands seen:
 - `[3, id, shapeType, [a,b,c,d,tx,ty], [styleKey, value, ...], parent]` — create
   shape. `shapeType`: preset enum (6, 59, …) or **154 = freeform path**.
   Transform is an affine matrix; tx/ty in EMU-ish page units.
-- `[2, id, [childIds], [affine], parent]` — group.
+- `[2, id, [childIds], [affine], parent]` — group. **Pinned 2026-07-23** (dump
+  p-group): to group N shapes, append ONE cmd 2 after the shape commands with
+  every child id, identity affine `[1,0,0,1,0,0]`, parent `"p"`. Children are
+  UNCHANGED — they keep `parent:"p"`; the hierarchy lives only in the group's
+  child-id list. No style, no cmd-17 companion. Verified: injecting this makes
+  a multi-shape paste select/drag/scale as one object and syncs.
 - `[17, id, null, 0, 1, [], [12, 2]]` — accompanies shapes; role unknown;
   copying it verbatim works.
 
