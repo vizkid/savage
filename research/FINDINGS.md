@@ -64,8 +64,16 @@ Style keys observed:
 | 19 | stroke color |
 | 22 | stroke weight (381 for default 1px-ish) |
 | 25, 27, 30 | unknown (freeforms: 0, 1.3, 1.3) |
-| 60, 61 | gradient: type, `[[color, position], ...]` stops |
-| 73, 145 | unknown (gradient dump) |
+| 60 | gradient type: 1 = linear, 2 = radial |
+| 61 | gradient stops: `[[ "#RRGGBB", offset0to1 ], ...]` (any count; = SVG stops) |
+| 62 | gradient angle, radians (1.5708 = π/2 = 90°) |
+| 73 | radial-only flag (1) |
+| 145 | "has gradient fill" marker (1) |
+
+Gradients map ~1:1 to SVG: `<linearGradient>`/`<radialGradient>` stop list →
+key 61, angle → 62, type → 60. Verified with real linear + radial dumps
+2026-07-23. Radial center/radius/focal (SVG cx/cy/r/fx/fy) not yet
+distinguished — spec should map simple centered radials first.
 
 Path ops (stream of `op, coordCount` pairs over a flat coord array). Pinned
 2026-07-23 by crafting single-op shapes and replaying (experiment C):
