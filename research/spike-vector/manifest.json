@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "savage-vector-spike",
+  "version": "0.0.1",
+  "description": "Throwaway probe: replay a captured slice-clip payload into Slides via synthetic paste. Delete after the spike.",
+  "permissions": ["clipboardRead"],
+  "content_scripts": [
+    {
+      "matches": ["https://docs.google.com/*"],
+      "js": ["probe.js"],
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    }
+  ]
+}

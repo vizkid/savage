@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Savage clipboard dump</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  pre { font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-all;
+        background: rgba(128,128,128,.12); padding: 12px; border-radius: 6px; }
+  b { color: #E8940A; }
+</style>
+</head>
+<body>
+<h1>Clipboard dump + fresh-mutation loop</h1>
+<p>Copy a shape in Slides, click here, press <b>Cmd+V</b>. The page captures every
+flavor, downloads the raw dump, then <b>puts a mutated replay payload on the
+clipboard</b> (first path point moved to a visibly different spot, or the shape
+shifted if it has no path). Immediately switch back to Slides and press
+<b>Cmd+Shift+9</b>. Speed matters: the envelope appears to go stale.</p>
+<label><input type="checkbox" id="strip"> also strip the internal-clip-id flavor</label>
+<label><input type="checkbox" id="stripkeys"> also strip envelope server keys (edrk/edi)</label>
+<label><input type="checkbox" id="nodl"> skip the file download</label>
+<pre id="out">waiting for paste…</pre>
+<script>
+  const out = document.getElementById('out');
+  const TYPE = 'application/x-vnd.google-docs-drawings-object+wrapped';
+  const CLIP = 'application/x-vnd.google-docs-internal-clip-id';
+  let n = 0;
+
+  function randHex(n) {
+    return Array.from(crypto.getRandomValues(new Uint8Array(n)))
+      .map((b) => (b & 15).toString(16))
+      .join('');
+  }
+
+  function mutate(dump) {
+    if (!dump[TYPE]) return 'no drawings-object flavor: nothing to mutate';
+    const wrapper = JSON.parse(dump[TYPE]);
+    const data = JSON.parse(wrapper.data);
+    let how = '';
+    for (const list of [data.resolved, data.unresolved]) {
+      for (const cmd of list || []) {
+        const style = cmd[4];
+        if (Array.isArray(style)) {
+          const i = style.indexOf(12);
+          if (i >= 0 && Array.isArray(style[i + 1])) {
+            style[i + 1][0][3][0] = 45000;
+            style[i + 1][0][3][1] = 45000;
+            how = 'first path point -> (45000,45000)';
+            continue;
+          }
+        }
+        if (Array.isArray(cmd[3]) && cmd[3].length === 6 && !how) {
+          cmd[3][4] = (cmd[3][4] || 0) + 60000;
+          how = 'transform tx += 60000';
+        }
+      }
+    }
+    // Always give shapes fresh ids: pasting into the source document with the
+    // original ids lets Slides clone the existing shape and ignore our data.
+    const ids = new Set();
+    for (const list of [data.resolved, data.unresolved]) {
+      for (const cmd of list || []) if (typeof cmd[1] === 'string') ids.add(cmd[1]);
+    }
+    let serialized = JSON.stringify(data);
+    for (const id of ids) {
+      serialized = serialized.split(id).join('g' + randHex(11) + '_0_' + Math.floor(Math.random() * 90 + 10));
+    }
+    how += ' + ' + ids.size + ' shape id(s) randomized';
+    wrapper.data = serialized;
+    // Same story for the docs-internal-guid in the html flavor.
+    if (typeof dump['text/html'] === 'string') {
+      dump['text/html'] = dump['text/html'].replace(
+        /docs-internal-guid-[0-9a-f-]+/g,
+        () => 'docs-internal-guid-' + randHex(8) + '-ffff-' + randHex(4) + '-' + randHex(4) + '-' + randHex(12)
+      );
+      how += ' + html guid randomized';
+    }
+    if (document.getElementById('stripkeys').checked) {
+      delete wrapper.edrk;
+      delete wrapper.edi;
+      how += ' + edrk/edi stripped';
+    }
+    dump[TYPE] = JSON.stringify(wrapper);
+    if (document.getElementById('strip').checked) {
+      delete dump[CLIP];
+      how += ' + clip-id stripped';
+    }
+    return how || 'no mutable field found';
+  }
+
+  document.addEventListener('paste', async (e) => {
+    e.preventDefault();
+    const dump = {};
+    for (const t of e.clipboardData.types) {
+      dump[t] = t === 'Files'
+        ? Array.from(e.clipboardData.files).map((f) => `${f.name} (${f.type}, ${f.size}B)`)
+        : e.clipboardData.getData(t);
+    }
+    const summary = Object.entries(dump)
+      .map(([t, v]) => `${t}: ${typeof v === 'string' ? v.length + ' chars' : JSON.stringify(v)}`)
+      .join('\n');
+    if (!document.getElementById('nodl').checked) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' }));
+      a.download = `savage-clip-dump-${++n}-${Date.now()}.json`;
+      a.click();
+    }
+    let how;
+    try {
+      how = mutate(dump);
+      await navigator.clipboard.writeText(JSON.stringify(dump));
+      how += '\n\nMUTATED PAYLOAD IS ON THE CLIPBOARD.\nSwitch to Slides and press Cmd+Shift+9 NOW.';
+    } catch (err) {
+      how = 'mutation/clipboard failed: ' + err.message;
+    }
+    out.textContent = `--- paste #${n} ---\n${summary}\n\n${how}`;
+  });
+</script>
+</body>
+</html>
