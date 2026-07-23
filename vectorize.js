@@ -15,22 +15,32 @@ const VEC_PASTE_X = 36576; // pasted SVG's top-left lands at (1", 0.5")
 const VEC_PASTE_Y = 18288;
 
 // Elements that force PNG fallback wherever they appear (defs included).
+// <text> converts via text-to-curves (fonts.js); <style> is allowed only
+// when its content is exclusively @font-face rules (checked in the pre-scan).
 const VEC_REJECT_ELEMENTS = new Set([
-  'text', 'tspan', 'textPath', 'image', 'use', 'foreignObject', 'pattern',
-  'mask', 'clipPath', 'filter', 'style', 'script', 'switch', 'symbol',
+  'tspan', 'textPath', 'image', 'use', 'foreignObject', 'pattern',
+  'mask', 'clipPath', 'filter', 'script', 'switch', 'symbol',
   'marker', 'animate', 'animateMotion', 'animateTransform', 'set',
 ]);
 const VEC_SKIP_ELEMENTS = new Set([
-  'defs', 'title', 'desc', 'metadata', 'linearGradient', 'radialGradient', 'stop',
+  'defs', 'title', 'desc', 'metadata', 'linearGradient', 'radialGradient', 'stop', 'style',
 ]);
 const VEC_PAINT_PROPS = [
   'fill', 'stroke', 'stroke-width', 'fill-rule', 'opacity', 'fill-opacity',
   'stroke-opacity', 'stroke-dasharray', 'mask', 'clip-path', 'filter',
+  'font-family', 'font-size', 'font-weight', 'text-anchor', 'letter-spacing',
+];
+const VEC_INHERITED = [
+  'fill', 'stroke', 'stroke-width', 'fill-rule',
+  'font-family', 'font-size', 'font-weight', 'text-anchor', 'letter-spacing',
 ];
 
-function svgToSliceClip(svgText) {
+// Async: font resolution (text-to-curves) awaits network/parse work.
+// opts.resolveFont overrides the whole face ladder (tests); opts.fetchFont
+// injects just the network rung (the extension's service-worker fetch).
+async function svgToSliceClip(svgText, opts) {
   try {
-    return vecConvert(svgText);
+    return await vecConvert(svgText, opts || {});
   } catch (err) {
     console.debug('[svg-paste] vectorize fallback:', err.message);
     return null;
@@ -78,11 +88,20 @@ function vecProps(el) {
   return p;
 }
 
+// Rejects out-of-scope features document-wide; returns the Map of embedded
+// @font-face faces collected from (font-face-only) <style> blocks.
 function vecPreScan(root) {
+  const embeddedFaces = new Map();
   const all = [root, ...root.querySelectorAll('*')];
   for (const el of all) {
     if (VEC_REJECT_ELEMENTS.has(el.localName)) vecReject(`<${el.localName}> is out of scope`);
     if (el !== root && el.localName === 'svg') vecReject('nested <svg>');
+    if (el.localName === 'style') {
+      const faces = fontFaceOnlyStyle(el.textContent || '');
+      if (!faces) vecReject('<style> beyond @font-face');
+      for (const [family, buf] of faces) embeddedFaces.set(family, buf);
+      continue;
+    }
     const p = vecProps(el);
     for (const k of ['mask', 'clip-path', 'filter']) {
       if (p[k] && p[k] !== 'none') vecReject(`${k} is out of scope`);
@@ -92,6 +111,7 @@ function vecPreScan(root) {
       if (p[k] !== undefined && parseFloat(p[k]) !== 1) vecReject(`partial ${k}`);
     }
   }
+  return embeddedFaces;
 }
 
 function vecFraction(v, dflt) {
@@ -147,10 +167,10 @@ function vecGradient(doc, url) {
   return { type: 1, stops, angle: Math.atan2(y2 - y1, x2 - x1) };
 }
 
-// Inheritable paint state, resolved lazily so unpainted values never reject.
+// Inheritable paint/text state, resolved lazily so unused values never reject.
 function vecPaint(props, inherited) {
   const out = { ...inherited };
-  for (const k of ['fill', 'stroke', 'stroke-width', 'fill-rule']) {
+  for (const k of VEC_INHERITED) {
     if (props[k] !== undefined) out[k] = props[k];
   }
   return out;
@@ -250,7 +270,44 @@ function vecCheckFillRule(segments) {
   }
 }
 
-function vecWalk(doc, el, matrix, inherited, shapes) {
+// <text> → glyph-outline segments via the resolved face. Rejects the text
+// features we can't lay out; whitespace-only content renders nothing.
+async function vecTextSegments(ctx, el, paint) {
+  if (el.children.length > 0) vecReject('<text> with child elements');
+  for (const attr of ['dx', 'dy', 'rotate', 'textLength']) {
+    if (el.getAttribute(attr) !== null) vecReject(`text ${attr}`);
+  }
+  if (paint['letter-spacing'] !== undefined && paint['letter-spacing'] !== 'normal') {
+    vecReject('letter-spacing');
+  }
+  const content = (el.textContent || '').replace(/\s+/g, ' ').trim();
+  if (!content) return [];
+  const size = parseFloat(paint['font-size']);
+  if (!Number.isFinite(size) || size <= 0) vecReject('bad font-size');
+  const font = await ctx.resolveFont({
+    family: paint['font-family'] || '',
+    weight: paint['font-weight'] || '400',
+  });
+  if (!font) vecReject('no font available');
+  const x = parseFloat(el.getAttribute('x') || '0') || 0;
+  const y = parseFloat(el.getAttribute('y') || '0') || 0;
+  const anchor = paint['text-anchor'] || 'start';
+  let ax = x;
+  if (anchor === 'middle' || anchor === 'end') {
+    const w = font.getAdvanceWidth(content, size, { kerning: true });
+    ax = anchor === 'middle' ? x - w / 2 : x - w;
+  }
+  const glyphPath = font.getPath(content, ax, y, size, { kerning: true });
+  try {
+    // Flatten + union (fonts.js): overlapping same-winding glyph contours
+    // would notch under Slides' evenodd fill.
+    return glyphCommandsToSegments(glyphPath.commands);
+  } catch (err) {
+    vecReject(`glyph union failed: ${err.message}`);
+  }
+}
+
+async function vecWalk(ctx, el, matrix, inherited, shapes) {
   for (const child of el.children) {
     const name = child.localName;
     if (VEC_SKIP_ELEMENTS.has(name)) continue;
@@ -260,7 +317,14 @@ function vecWalk(doc, el, matrix, inherited, shapes) {
     if (!local) vecReject('unsupported transform');
     const m = matMultiply(matrix, local);
     if (name === 'g' || name === 'a') {
-      vecWalk(doc, child, m, paint, shapes);
+      await vecWalk(ctx, child, m, paint, shapes);
+      continue;
+    }
+    if (name === 'text') {
+      const segments = await vecTextSegments(ctx, child, paint);
+      // isText: union output is already evenodd-safe; outer rings of one
+      // letterform can share bboxes, so the nonzero-union check must not run.
+      if (segments.length) shapes.push({ segments, matrix: m, paint, isText: true });
       continue;
     }
     const segments = shapeToSegments(child);
@@ -275,11 +339,17 @@ function vecWalk(doc, el, matrix, inherited, shapes) {
   }
 }
 
-function vecConvert(svgText) {
+async function vecConvert(svgText, opts) {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const root = doc.documentElement;
   if (doc.querySelector('parsererror') || root.localName !== 'svg') vecReject('not valid SVG');
-  vecPreScan(root);
+  const embeddedFaces = vecPreScan(root);
+  const ctx = {
+    doc,
+    resolveFont: opts.resolveFont
+      ? (spec) => opts.resolveFont(spec, embeddedFaces)
+      : (spec) => defaultResolveFont(spec, embeddedFaces, opts.fetchFont),
+  };
 
   const size = resolveSize(root);
   const vbAttr = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
@@ -296,7 +366,16 @@ function vecConvert(svgText) {
   );
 
   const shapes = [];
-  vecWalk(doc, root, rootMatrix, { fill: 'black', stroke: 'none', 'stroke-width': '1', 'fill-rule': 'nonzero' }, shapes);
+  await vecWalk(ctx, root, rootMatrix, {
+    fill: 'black',
+    stroke: 'none',
+    'stroke-width': '1',
+    'fill-rule': 'nonzero',
+    'font-family': '',
+    'font-size': '16',
+    'font-weight': '400',
+    'text-anchor': 'start',
+  }, shapes);
   if (!shapes.length) vecReject('nothing convertible');
 
   const commands = [];
@@ -352,7 +431,8 @@ function vecConvert(svgText) {
       vecStyleSet(style, 22, Math.round(width * Math.sqrt(det)));
     }
 
-    if ((shape.paint['fill-rule'] || 'nonzero') !== 'evenodd' && fill !== 'none' && fillsArea) {
+    if (!shape.isText && (shape.paint['fill-rule'] || 'nonzero') !== 'evenodd' &&
+        fill !== 'none' && fillsArea) {
       vecCheckFillRule(shape.segments);
     }
 

@@ -3,7 +3,7 @@
   "name": "Savage",
   "version": "1.1.0",
   "description": "Convert SVGs to PNGs for Google Slides. Copy or drag SVGs in and they arrive as high-res transparent PNGs.",
-  "permissions": ["clipboardRead", "clipboardWrite", "storage"],
+  "permissions": ["clipboardRead", "clipboardWrite", "storage", "declarativeNetRequestWithHostAccess"],
   "optional_host_permissions": ["<all_urls>"],
   "homepage_url": "https://github.com/vizkid/savage",
   "icons": {
@@ -26,7 +26,7 @@
   "content_scripts": [
     {
       "matches": ["https://docs.google.com/*"],
-      "js": ["config.js", "rasterize.js", "pathdata.js", "vector-template.js", "vectorize.js", "content.js"],
+      "js": ["config.js", "rasterize.js", "pathdata.js", "vendor/opentype.min.js", "vendor/martinez.umd.js", "vendor/roboto-regular.js", "fonts.js", "vector-template.js", "vectorize.js", "content.js", "iframe-paste.js"],
       "run_at": "document_idle",
       "all_frames": true,
       "match_origin_as_fallback": true

@@ -26,8 +26,23 @@ a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_L
 | 15 | With "any site" off, drag an SVG image from a non-CORS site; then enable the popup toggle and retry | First: error toast naming the cross-origin block; after enabling (Chrome prompts once): same drag converts |
 
 | 16 | Drag a multi-feature in-scope SVG (rect+stroke, circle, cubic path, evenodd donut, linear gradient — e.g. the golden fixture in `VECTOR-SPEC.md` testing notes) onto a slide | Toast "SVG pasted as editable shapes"; every shape individually selectable/editable; gradient runs the right direction; deck reloads with shapes intact (server sync, no 400 banner) |
-| 17 | Drag an SVG containing `<text>` onto a slide | PNG fallback: arrives as an image, text rendered correctly |
+| 17 | *(v2 update)* Drag an SVG containing `<text>` onto a slide | **Editable outlined-text shapes** (text-to-curves); see rows 26-27 for font-ladder cases |
 | 18 | Drag an SVG with partial opacity (`fill-opacity="0.5"`) onto a slide | PNG fallback, translucency preserved in the raster |
+
+### v2: vectors by default (VECTOR2-SPEC.md)
+
+| # | Steps | Pass when |
+|---|---|---|
+| 19 | Copy in-scope SVG markup → focus Slides (conversion toast) → Cmd+V | Native **editable shapes** land (toast "SVG pasted as editable shapes") — not a PNG. Repeat Cmd+V lands another copy |
+| 20 | Copy in-scope SVG → focus Slides → now copy ordinary text elsewhere → back to Slides → Cmd+V | The text pastes natively; no shapes, no Savage toast (stale stash must not fire) |
+| 21 | Copy an out-of-scope SVG (e.g. with `<text>`) → focus Slides → Cmd+V | PNG lands exactly as v1 (toast "SVG ready. Paste as PNG" on conversion) |
+| 22 | After any conversion, paste into VS Code | Original SVG markup appears (text/plain preserved — row 7 regression) |
+| 23 | Convert an SVG (any flow) → paste lands as shapes → Cmd+Z → **Cmd+Shift+V** | The same SVG lands as **PNG**; toast "Pasted as PNG" |
+| 24 | Convert an SVG → copy unrelated rich text elsewhere → back to Slides → Cmd+Shift+V | Behaves as native paste-without-formatting: the plain text pastes; no PNG, no Savage toast |
+| 25 | Fresh Slides tab, nothing converted yet → Cmd+Shift+V with rich text on clipboard | Native paste-without-formatting, untouched |
+| 26 | Drag an SVG with `<text font-family="Lobster">` (any Google Font not installed locally), optional "any site" access **granted** | Outlined text lands in the fetched face, editable shapes |
+| 27 | Same SVG with "any site" access **revoked** | Still converts — outlined text in bundled Roboto (ladder degrades, never breaks) |
+| 28 | Golden text replay: converter output for a text SVG via Cmd+Shift+9 | Renders, syncs (no 400), survives reload |
 
 Also: with the extension loaded and idle, the Slides console shows no errors.
 Vector run 2026-07-23: 16 (golden replay + live drop) and 17 passed live; unit

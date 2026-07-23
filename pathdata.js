@@ -85,6 +85,14 @@ function parseTransform(str) {
 // Quarter-arc cubic control-point factor (also exact for quarter ellipses).
 const KAPPA = 0.5522847498307936;
 
+// Quadratic (control qx,qy, from current point px,py to x,y) → exact cubic
+// via the 2/3 control lift. Shared by the d-parser and glyph conversion.
+function quadToCubicSeg(px, py, qx, qy, x, y) {
+  return ['C',
+    px + (2 / 3) * (qx - px), py + (2 / 3) * (qy - py),
+    x + (2 / 3) * (qx - x), y + (2 / 3) * (qy - y), x, y];
+}
+
 // One elliptical-arc slice (≤ 90°) → a cubic: controls sit at
 // start/end + alpha·tangent in unit-circle space, then map through the
 // ellipse radii and x-axis rotation.
@@ -177,9 +185,7 @@ function parsePathD(d) {
     if (!Number.isFinite(n)) throw new Error('bad number');
     return n;
   };
-  const quadToCubic = (qx, qy, x, y) => ['C',
-    cx + (2 / 3) * (qx - cx), cy + (2 / 3) * (qy - cy),
-    x + (2 / 3) * (qx - x), y + (2 / 3) * (qy - y), x, y];
+  const quadToCubic = (qx, qy, x, y) => quadToCubicSeg(cx, cy, qx, qy, x, y);
   try {
     while (i < tokens.length) {
       if (/^[A-Za-z]$/.test(tokens[i])) cmd = tokens[i++];

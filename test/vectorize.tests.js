@@ -20,8 +20,8 @@ function unwrap(flavors) {
     .map((c) => ({ id: c[1], type: c[2], xf: c[3], style: c[4], parent: c[5] }));
   return { wrapper, data, shapes };
 }
-function one(svg) {
-  const { shapes } = unwrap(svgToSliceClip(svg));
+async function one(svg) {
+  const { shapes } = unwrap(await svgToSliceClip(svg));
   assert(shapes.length === 1, `expected 1 shape, got ${shapes.length}`);
   return shapes[0];
 }
@@ -48,8 +48,8 @@ function arrNear(a, b, eps = 1.5) {
 
 // --- geometry: basic shapes ---
 
-t('vec: rect → op 0/1/5 square, scaled 381/px, placed at paste origin', () => {
-  const s = one(V('<rect x="10" y="20" width="40" height="30" fill="#ff0000"/>'));
+t('vec: rect → op 0/1/5 square, scaled 381/px, placed at paste origin', async () => {
+  const s = await one(V('<rect x="10" y="20" width="40" height="30" fill="#ff0000"/>'));
   assert(s.type === 138, `type ${s.type}, want 138 (154 spline-smooths)`);
   assert(arrNear(s.xf, [1, 0, 0, 1, PX + 3810, PY + 7620]), `xf ${JSON.stringify(s.xf)}`);
   assert(near(sv(s, 8), 15240) && near(sv(s, 9), 11430), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
@@ -58,27 +58,27 @@ t('vec: rect → op 0/1/5 square, scaled 381/px, placed at paste origin', () => 
   assert(arrNear(coords, [0, 0, 15240, 0, 15240, 11430, 0, 11430]), `coords ${coords}`);
 });
 
-t('vec: width/height attrs rescale user units', () => {
-  const s = one(V('<rect x="10" y="20" width="40" height="30" fill="#f00"/>',
+t('vec: width/height attrs rescale user units', async () => {
+  const s = await one(V('<rect x="10" y="20" width="40" height="30" fill="#f00"/>',
     'width="200" height="200" viewBox="0 0 100 100"'));
   assert(near(s.xf[4], PX + 7620), `tx ${s.xf[4]}`);
   assert(near(sv(s, 8), 30480), `8 = ${sv(s, 8)}`);
 });
 
-t('vec: non-uniform viewBox scale applies per axis', () => {
-  const s = one(V('<rect x="0" y="0" width="40" height="30" fill="#f00"/>',
+t('vec: non-uniform viewBox scale applies per axis', async () => {
+  const s = await one(V('<rect x="0" y="0" width="40" height="30" fill="#f00"/>',
     'width="200" height="100" viewBox="0 0 100 100"'));
   assert(near(sv(s, 8), 30480) && near(sv(s, 9), 11430), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
 });
 
-t('vec: viewBox min-x/min-y normalize to the paste origin', () => {
-  const s = one(V('<rect x="-50" y="-50" width="10" height="10" fill="#f00"/>',
+t('vec: viewBox min-x/min-y normalize to the paste origin', async () => {
+  const s = await one(V('<rect x="-50" y="-50" width="10" height="10" fill="#f00"/>',
     'viewBox="-50 -50 100 100"'));
   assert(arrNear([s.xf[4], s.xf[5]], [PX, PY]), `origin ${s.xf[4]},${s.xf[5]}`);
 });
 
-t('vec: circle → one chained op-3 run of 4 cubics, closed', () => {
-  const s = one(V('<circle cx="50" cy="50" r="40" fill="#00ff00"/>'));
+t('vec: circle → one chained op-3 run of 4 cubics, closed', async () => {
+  const s = await one(V('<circle cx="50" cy="50" r="40" fill="#00ff00"/>'));
   const { ops, coords } = path12(s);
   assert(String(ops) === '0,2,3,24,5,0', `ops ${ops}`);
   assert(near(sv(s, 8), 30480) && near(sv(s, 9), 30480), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
@@ -86,15 +86,15 @@ t('vec: circle → one chained op-3 run of 4 cubics, closed', () => {
   assert(arrNear(coords.slice(-2), coords.slice(0, 2)), 'loop does not close on start');
 });
 
-t('vec: ellipse rx/ry scale independently', () => {
-  const s = one(V('<ellipse cx="50" cy="50" rx="40" ry="20" fill="#00ff00"/>'));
+t('vec: ellipse rx/ry scale independently', async () => {
+  const s = await one(V('<ellipse cx="50" cy="50" rx="40" ry="20" fill="#00ff00"/>'));
   const { ops } = path12(s);
   assert(String(ops) === '0,2,3,24,5,0', `ops ${ops}`);
   assert(near(sv(s, 8), 30480) && near(sv(s, 9), 15240), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
 });
 
-t('vec: rounded rect → four corner cubics between edges, closed', () => {
-  const s = one(V('<rect x="10" y="10" width="60" height="40" rx="10" fill="#f00"/>'));
+t('vec: rounded rect → four corner cubics between edges, closed', async () => {
+  const s = await one(V('<rect x="10" y="10" width="60" height="40" rx="10" fill="#f00"/>'));
   const pairs = opPairs(path12(s).ops);
   assert(pairs[0][0] === 0, 'must start with moveTo');
   assert(pairs[pairs.length - 1][0] === 5, 'must close');
@@ -103,8 +103,8 @@ t('vec: rounded rect → four corner cubics between edges, closed', () => {
   cubicRuns.forEach(([, n]) => assert(n === 6, `corner run has ${n} coords, want 6`));
 });
 
-t('vec: line → open op-1, no fill, stroke mapped', () => {
-  const s = one(V('<line x1="10" y1="10" x2="60" y2="40" stroke="#000000" stroke-width="2"/>'));
+t('vec: line → open op-1, no fill, stroke mapped', async () => {
+  const s = await one(V('<line x1="10" y1="10" x2="60" y2="40" stroke="#000000" stroke-width="2"/>'));
   const { ops, coords } = path12(s);
   assert(String(ops) === '0,2,1,2', `ops ${ops}`);
   assert(arrNear(coords, [0, 0, 19050, 11430]), `coords ${coords}`);
@@ -113,16 +113,16 @@ t('vec: line → open op-1, no fill, stroke mapped', () => {
   assert(near(sv(s, 22), 762), `22 = ${sv(s, 22)}`);
 });
 
-t('vec: polyline → open op-1 chain', () => {
-  const s = one(V('<polyline points="0,0 50,0 50,50" fill="none" stroke="#112233"/>'));
+t('vec: polyline → open op-1 chain', async () => {
+  const s = await one(V('<polyline points="0,0 50,0 50,50" fill="none" stroke="#112233"/>'));
   const { ops } = path12(s);
   assert(String(ops) === '0,2,1,4', `ops ${ops}`);
   assert(sv(s, 14) === 0, 'fill="none" must set 14:0');
   assert(sv(s, 19) === '#112233' && near(sv(s, 22), 381), 'default 1px stroke = 381');
 });
 
-t('vec: polygon → closed op-1 chain', () => {
-  const s = one(V('<polygon points="0,0 50,0 25,40" fill="#123456"/>'));
+t('vec: polygon → closed op-1 chain', async () => {
+  const s = await one(V('<polygon points="0,0 50,0 25,40" fill="#123456"/>'));
   const { ops } = path12(s);
   assert(String(ops) === '0,2,1,4,5,0', `ops ${ops}`);
   assert(sv(s, 14) === 1 && sv(s, 15) === '#123456', 'polygon fills');
@@ -130,28 +130,28 @@ t('vec: polygon → closed op-1 chain', () => {
 
 // --- geometry: path data ---
 
-t('vec: path H/V/L normalize into one op-1 chain', () => {
-  const s = one(V('<path d="M10 10 H60 V40 L10 40 Z" fill="#f00"/>'));
+t('vec: path H/V/L normalize into one op-1 chain', async () => {
+  const s = await one(V('<path d="M10 10 H60 V40 L10 40 Z" fill="#f00"/>'));
   const { ops, coords } = path12(s);
   assert(String(ops) === '0,2,1,6,5,0', `ops ${ops}`);
   assert(arrNear(coords, [0, 0, 19050, 0, 19050, 11430, 0, 11430]), `coords ${coords}`);
 });
 
-t('vec: consecutive cubics chain into one op-3 run', () => {
-  const s = one(V('<path d="M0 0 C10 0 20 10 20 20 C20 30 10 40 0 40" fill="none" stroke="#000"/>'));
+t('vec: consecutive cubics chain into one op-3 run', async () => {
+  const s = await one(V('<path d="M0 0 C10 0 20 10 20 20 C20 30 10 40 0 40" fill="none" stroke="#000"/>'));
   const { ops } = path12(s);
   assert(String(ops) === '0,2,3,12', `ops ${ops}`);
 });
 
-t('vec: quadratic → exact cubic (2/3 control lift)', () => {
-  const s = one(V('<path d="M0 0 Q30 0 30 30" fill="none" stroke="#000"/>'));
+t('vec: quadratic → exact cubic (2/3 control lift)', async () => {
+  const s = await one(V('<path d="M0 0 Q30 0 30 30" fill="none" stroke="#000"/>'));
   const { ops, coords } = path12(s);
   assert(String(ops) === '0,2,3,6', `ops ${ops}`);
   assert(arrNear(coords, [0, 0, 7620, 0, 11430, 3810, 11430, 11430]), `coords ${coords}`);
 });
 
-t('vec: arc → cubic run(s) ending on the arc endpoint', () => {
-  const s = one(V('<path d="M0 0 A20 20 0 0 1 20 20" fill="none" stroke="#000"/>'));
+t('vec: arc → cubic run(s) ending on the arc endpoint', async () => {
+  const s = await one(V('<path d="M0 0 A20 20 0 0 1 20 20" fill="none" stroke="#000"/>'));
   const { ops, coords } = path12(s);
   const pairs = opPairs(ops);
   assert(pairs[0][0] === 0 && pairs.slice(1).every(([op]) => op === 3), `ops ${ops}`);
@@ -166,23 +166,23 @@ t('vec: arc → cubic run(s) ending on the arc endpoint', () => {
   assert(arrNear(coords.slice(-2), [7620 - minX, 7620 - minY], 3), `arc end ${coords.slice(-2)}`);
 });
 
-t('vec: smooth cubics (S) extend the chained run', () => {
-  const s = one(V('<path d="M0 0 C10 0 20 10 20 20 S30 40 40 40" fill="none" stroke="#000"/>'));
+t('vec: smooth cubics (S) extend the chained run', async () => {
+  const s = await one(V('<path d="M0 0 C10 0 20 10 20 20 S30 40 40 40" fill="none" stroke="#000"/>'));
   const { ops } = path12(s);
   assert(String(ops) === '0,2,3,12', `ops ${ops}`);
 });
 
 // --- transforms ---
 
-t('vec: nested translate+scale bake into coords', () => {
-  const s = one(V('<g transform="translate(10,10)"><g transform="scale(2)">' +
+t('vec: nested translate+scale bake into coords', async () => {
+  const s = await one(V('<g transform="translate(10,10)"><g transform="scale(2)">' +
     '<rect x="0" y="0" width="10" height="10" fill="#f00"/></g></g>'));
   assert(arrNear([s.xf[4], s.xf[5]], [PX + 3810, PY + 3810]), `origin ${s.xf[4]},${s.xf[5]}`);
   assert(near(sv(s, 8), 7620) && near(sv(s, 9), 7620), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
 });
 
-t('vec: rotate bakes into coords (45° square grows bbox ×√2)', () => {
-  const s = one(V('<rect x="0" y="0" width="10" height="10" fill="#f00" transform="rotate(45 5 5)"/>'));
+t('vec: rotate bakes into coords (45° square grows bbox ×√2)', async () => {
+  const s = await one(V('<rect x="0" y="0" width="10" height="10" fill="#f00" transform="rotate(45 5 5)"/>'));
   assert(near(sv(s, 8), 5388, 4) && near(sv(s, 9), 5388, 4), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
   const { ops } = path12(s);
   assert(String(ops) === '0,2,1,6,5,0', `ops ${ops}`);
@@ -190,38 +190,38 @@ t('vec: rotate bakes into coords (45° square grows bbox ×√2)', () => {
 
 // --- paint ---
 
-t('vec: fill inherits from ancestor groups', () => {
-  const s = one(V('<g fill="#0000ff"><rect x="0" y="0" width="10" height="10"/></g>'));
+t('vec: fill inherits from ancestor groups', async () => {
+  const s = await one(V('<g fill="#0000ff"><rect x="0" y="0" width="10" height="10"/></g>'));
   assert(sv(s, 15) === '#0000FF', `15 = ${sv(s, 15)}`);
 });
 
-t('vec: named colors normalize to hex', () => {
-  const s = one(V('<rect x="0" y="0" width="10" height="10" fill="red"/>'));
+t('vec: named colors normalize to hex', async () => {
+  const s = await one(V('<rect x="0" y="0" width="10" height="10" fill="red"/>'));
   assert(sv(s, 15) === '#FF0000', `15 = ${sv(s, 15)}`);
 });
 
-t('vec: rgb() colors normalize to hex', () => {
-  const s = one(V('<rect x="0" y="0" width="10" height="10" fill="rgb(0, 128, 255)"/>'));
+t('vec: rgb() colors normalize to hex', async () => {
+  const s = await one(V('<rect x="0" y="0" width="10" height="10" fill="rgb(0, 128, 255)"/>'));
   assert(sv(s, 15) === '#0080FF', `15 = ${sv(s, 15)}`);
 });
 
-t('vec: default fill is black, default stroke is none', () => {
-  const s = one(V('<rect x="0" y="0" width="10" height="10"/>'));
+t('vec: default fill is black, default stroke is none', async () => {
+  const s = await one(V('<rect x="0" y="0" width="10" height="10"/>'));
   assert(sv(s, 15) === '#000000' && sv(s, 14) === 1, 'default fill black');
   assert(sv(s, 18) === 0, 'no stroke attr → 18:0');
   assert(sv(s, 19) === undefined, 'stroke-off must drop key 19');
 });
 
-t('vec: fill and stroke together', () => {
-  const s = one(V('<rect x="0" y="0" width="10" height="10" fill="#ff0000" stroke="#00ff00" stroke-width="3"/>'));
+t('vec: fill and stroke together', async () => {
+  const s = await one(V('<rect x="0" y="0" width="10" height="10" fill="#ff0000" stroke="#00ff00" stroke-width="3"/>'));
   assert(sv(s, 14) === 1 && sv(s, 15) === '#FF0000', 'fill on');
   assert(sv(s, 18) !== 0 && sv(s, 19) === '#00FF00' && near(sv(s, 22), 1143), 'stroke on, 3px = 1143');
 });
 
 // --- gradients ---
 
-t('vec: linear gradient → keys 60/61/62/145', () => {
-  const s = one(V('<defs><linearGradient id="g">' +
+t('vec: linear gradient → keys 60/61/62/145', async () => {
+  const s = await one(V('<defs><linearGradient id="g">' +
     '<stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/>' +
     '</linearGradient></defs><rect x="0" y="0" width="50" height="50" fill="url(#g)"/>'));
   assert(sv(s, 60) === 1, `60 = ${sv(s, 60)}`);
@@ -232,15 +232,15 @@ t('vec: linear gradient → keys 60/61/62/145', () => {
   assert(sv(s, 145) === 1, '145 gradient marker');
 });
 
-t('vec: radial gradient → 60:2 + 73 + 145', () => {
-  const s = one(V('<defs><radialGradient id="r">' +
+t('vec: radial gradient → 60:2 + 73 + 145', async () => {
+  const s = await one(V('<defs><radialGradient id="r">' +
     '<stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#000000"/>' +
     '</radialGradient></defs><circle cx="25" cy="25" r="20" fill="url(#r)"/>'));
   assert(sv(s, 60) === 2 && sv(s, 73) === 1 && sv(s, 145) === 1,
     `60/73/145 = ${sv(s, 60)}/${sv(s, 73)}/${sv(s, 145)}`);
 });
 
-t('vec: unsupported gradient forms → null', () => {
+t('vec: unsupported gradient forms → null', async () => {
   for (const [label, g] of [
     ['gradientTransform', '<linearGradient id="g" gradientTransform="rotate(30)">' +
       '<stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>'],
@@ -250,33 +250,33 @@ t('vec: unsupported gradient forms → null', () => {
       '<stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></radialGradient>'],
   ]) {
     const svg = V(`<defs>${g}</defs><rect x="0" y="0" width="50" height="50" fill="url(#g)"/>`);
-    assert(svgToSliceClip(svg) === null, `${label} must fall back to PNG`);
+    assert((await svgToSliceClip(svg)) === null, `${label} must fall back to PNG`);
   }
 });
 
 // --- fill rule (Slides fills evenodd, winding-independent) ---
 
-t('vec: evenodd donut → two subpaths in one stream', () => {
-  const s = one(V('<path fill-rule="evenodd" fill="#f00" d="M0 0 H100 V100 H0 Z M30 30 V70 H70 V30 Z"/>'));
+t('vec: evenodd donut → two subpaths in one stream', async () => {
+  const s = await one(V('<path fill-rule="evenodd" fill="#f00" d="M0 0 H100 V100 H0 Z M30 30 V70 H70 V30 Z"/>'));
   const { ops } = path12(s);
   assert(String(ops) === '0,2,1,6,5,0,0,2,1,6,5,0', `ops ${ops}`);
 });
 
-t('vec: nonzero donut (opposite winding) converts — same result under evenodd', () => {
-  const s = one(V('<path fill="#f00" d="M0 0 H100 V100 H0 Z M30 30 V70 H70 V30 Z"/>'));
+t('vec: nonzero donut (opposite winding) converts — same result under evenodd', async () => {
+  const s = await one(V('<path fill="#f00" d="M0 0 H100 V100 H0 Z M30 30 V70 H70 V30 Z"/>'));
   assert(String(path12(s).ops) === '0,2,1,6,5,0,0,2,1,6,5,0');
 });
 
-t('vec: nonzero union (same-winding overlap) → null, Slides would punch a hole', () => {
+t('vec: nonzero union (same-winding overlap) → null, Slides would punch a hole', async () => {
   const svg = V('<path fill="#f00" d="M0 0 H60 V60 H0 Z M30 30 H90 V90 H30 Z"/>');
-  assert(svgToSliceClip(svg) === null, 'must fall back to PNG');
+  assert((await svgToSliceClip(svg)) === null, 'must fall back to PNG');
 });
 
 // --- out of scope → null ---
 
-t('vec: out-of-scope features → null', () => {
+t('vec: out-of-scope features → null', async () => {
+  // <text> left this list in v2 — it converts via text-to-curves now.
   const cases = [
-    ['text', '<text x="0" y="10">hi</text>'],
     ['image', '<image width="10" height="10" href="data:image/png;base64,iVBORw0KGgo="/>'],
     ['use', '<defs><rect id="r" width="5" height="5"/></defs><use href="#r"/>'],
     ['pattern fill', '<defs><pattern id="p" width="4" height="4"><rect width="2" height="2"/></pattern></defs>' +
@@ -291,11 +291,11 @@ t('vec: out-of-scope features → null', () => {
     ['foreignObject', '<foreignObject width="10" height="10"><div>x</div></foreignObject>'],
   ];
   for (const [label, inner] of cases) {
-    assert(svgToSliceClip(V(inner)) === null, `${label} must fall back to PNG`);
+    assert((await svgToSliceClip(V(inner))) === null, `${label} must fall back to PNG`);
   }
 });
 
-t('vec: partial opacity → null', () => {
+t('vec: partial opacity → null', async () => {
   const cases = [
     ['opacity', '<rect width="10" height="10" fill="#f00" opacity="0.5"/>'],
     ['fill-opacity', '<rect width="10" height="10" fill="#f00" fill-opacity="0.5"/>'],
@@ -303,19 +303,19 @@ t('vec: partial opacity → null', () => {
     ['rgba fill', '<rect width="10" height="10" fill="rgba(255,0,0,0.5)"/>'],
   ];
   for (const [label, inner] of cases) {
-    assert(svgToSliceClip(V(inner)) === null, `${label} must fall back to PNG`);
+    assert((await svgToSliceClip(V(inner))) === null, `${label} must fall back to PNG`);
   }
 });
 
-t('vec: malformed or non-SVG input → null', () => {
-  assert(svgToSliceClip('<svg><rect') === null, 'malformed');
-  assert(svgToSliceClip('<div>nope</div>') === null, 'non-svg root');
+t('vec: malformed or non-SVG input → null', async () => {
+  assert((await svgToSliceClip('<svg><rect')) === null, 'malformed');
+  assert((await svgToSliceClip('<div>nope</div>')) === null, 'non-svg root');
 });
 
 // --- multi-shape and payload plumbing ---
 
-t('vec: two elements → two shapes, ids consistent across resolved/unresolved', () => {
-  const flavors = svgToSliceClip(V('<rect x="0" y="0" width="10" height="10" fill="#f00"/>' +
+t('vec: two elements → two shapes, ids consistent across resolved/unresolved', async () => {
+  const flavors = await svgToSliceClip(V('<rect x="0" y="0" width="10" height="10" fill="#f00"/>' +
     '<rect x="20" y="0" width="10" height="10" fill="#0f0"/>'));
   const { data, shapes } = unwrap(flavors);
   assert(shapes.length === 2, `${shapes.length} shapes`);
@@ -324,10 +324,10 @@ t('vec: two elements → two shapes, ids consistent across resolved/unresolved',
     'unresolved must clone resolved');
 });
 
-t('vec: envelope is the sanitized template, ids/guid fresh per call', () => {
+t('vec: envelope is the sanitized template, ids/guid fresh per call', async () => {
   const svg = V('<rect x="0" y="0" width="10" height="10" fill="#f00"/>');
-  const a = svgToSliceClip(svg);
-  const b = svgToSliceClip(svg);
+  const a = await svgToSliceClip(svg);
+  const b = await svgToSliceClip(svg);
   const wa = JSON.parse(a[VTYPE]);
   assert(typeof wa.dih === 'number' && wa.dct === 'punch', 'dih/dct');
   assert('ds' in wa && 'cses' in wa && 'sm' in wa, 'load-bearing envelope fields');
