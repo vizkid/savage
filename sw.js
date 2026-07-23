@@ -29,7 +29,10 @@ async function resolveWikiFileUrl(url) {
 }
 
 const FONT_UA_RULE_ID = 7331;
-const LEGACY_UA = 'Mozilla/5.0 (Windows NT 5.1; rv:40.0) Gecko/20100101 Firefox/40.0';
+// css2 serves TTF only to UAs with no modern-browser token — a Firefox-40
+// string still gets woff2 (which opentype can't read). This bare NT-5.1
+// string reliably yields TTF (verified across Roboto + Lobster 2026-07-23).
+const LEGACY_UA = 'Mozilla/5.0 (Windows NT 5.1)';
 
 async function ensureFontUaRule() {
   await chrome.declarativeNetRequest.updateSessionRules({
@@ -48,14 +51,25 @@ async function ensureFontUaRule() {
   });
 }
 
-async function fetchGoogleFont(family, weight) {
-  await ensureFontUaRule().catch(() => {});
+// css2 only serves TTF to legacy UAs; the DNR rule rewrites our UA, but
+// updateSessionRules resolving doesn't guarantee the rule is live for the
+// very next request. So try, and if the response is woff2 (no TTF url),
+// re-ensure the rule and retry once — by then it's definitely enforced.
+async function cssToTtfUrl(family, weight) {
   const fam = encodeURIComponent(family).replace(/%20/g, '+');
-  const cssRes = await fetch(`https://fonts.googleapis.com/css2?family=${fam}:wght@${weight}`,
-    { credentials: 'omit' });
-  if (!cssRes.ok) throw new Error(`fonts API HTTP ${cssRes.status}`);
-  const ttfUrl = parseGoogleFontsCss(await cssRes.text());
-  if (!ttfUrl) throw new Error('no TTF url (unknown family, or UA rule inactive without host access)');
+  const url = `https://fonts.googleapis.com/css2?family=${fam}:wght@${weight}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await ensureFontUaRule().catch(() => {});
+    const res = await fetch(url, { credentials: 'omit', cache: 'no-store' });
+    if (!res.ok) throw new Error(`fonts API HTTP ${res.status}`);
+    const ttf = parseGoogleFontsCss(await res.text());
+    if (ttf) return ttf;
+  }
+  throw new Error('no TTF url (unknown family, or host access not granted)');
+}
+
+async function fetchGoogleFont(family, weight) {
+  const ttfUrl = await cssToTtfUrl(family, weight);
   const fontRes = await fetch(ttfUrl, { credentials: 'omit' });
   if (!fontRes.ok) throw new Error(`font HTTP ${fontRes.status}`);
   const bytes = new Uint8Array(await fontRes.arrayBuffer());
@@ -67,6 +81,10 @@ async function fetchGoogleFont(family, weight) {
 }
 
 const fontCache = new Map();
+
+// Warm the UA rule as soon as the worker spins up, so the common case never
+// hits the retry above.
+ensureFontUaRule().catch(() => {});
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== 'fetch-font') return;

@@ -106,6 +106,12 @@
   // service worker. Failing (no host access, offline, unknown family) just
   // drops resolution to the bundled face.
   async function fetchFontViaSw(spec) {
+    // chrome.runtime is gone in orphaned content scripts (extension reloaded
+    // without a tab reload) and in opaque-origin frames — degrade to bundled.
+    if (!(chrome && chrome.runtime && chrome.runtime.sendMessage)) {
+      debug('fetch-font unavailable: no chrome.runtime (reload the Slides tab)');
+      return null;
+    }
     try {
       const resp = await chrome.runtime.sendMessage({
         type: 'fetch-font',
