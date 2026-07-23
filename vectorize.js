@@ -29,6 +29,7 @@ const VEC_PAINT_PROPS = [
   'fill', 'stroke', 'stroke-width', 'fill-rule', 'opacity', 'fill-opacity',
   'stroke-opacity', 'stroke-dasharray', 'mask', 'clip-path', 'filter',
   'font-family', 'font-size', 'font-weight', 'text-anchor', 'letter-spacing',
+  'stop-color', 'stop-opacity',
 ];
 const VEC_INHERITED = [
   'fill', 'stroke', 'stroke-width', 'fill-rule', 'fill-opacity', 'stroke-opacity',
@@ -85,42 +86,123 @@ function vecColor(str) {
   return c.hex;
 }
 
-// Merged presentation attributes + style-attribute declarations (style wins).
-function vecProps(el) {
+// Props Savage understands in a <style> block. Anything else (display,
+// visibility, transform, mix-blend-mode, …) forces PNG fallback rather than
+// silently mis-render, since we can't honor it.
+const VEC_STYLE_PROP_SET = new Set([...VEC_PAINT_PROPS, 'stop-color', 'stop-opacity']);
+
+function vecParseDecls(body, out) {
+  for (const decl of body.split(';')) {
+    const i = decl.indexOf(':');
+    if (i < 0) continue;
+    const k = decl.slice(0, i).trim().toLowerCase();
+    const v = decl.slice(i + 1).trim();
+    if (v) out[k] = v;
+  }
+  return out;
+}
+
+// One simple selector: `tag`, `.class`, `tag.class`, or `*`. Anything with a
+// combinator, id, pseudo, or attribute part returns null → PNG fallback.
+function vecParseSelector(s) {
+  const t = s.trim();
+  if (t === '*') return { tag: '*' };
+  const m = /^([a-zA-Z][\w-]*)?(?:\.([\w-]+))?$/.exec(t);
+  if (!m || (!m[1] && !m[2])) return null;
+  return { tag: m[1] || undefined, cls: m[2] || undefined };
+}
+
+// Parse an SVG <style> into { faces: Map, rules: [{selectors, props}] }, or
+// null on any construct we can't fully honor (media/keyframes/import, id or
+// combinator selectors, unknown properties).
+function vecParseStylesheet(cssText) {
+  const stripped = (cssText || '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const faces = new Map();
+  let rest = stripped;
+  for (const block of stripped.match(/@font-face\s*\{[^}]*\}/g) || []) {
+    rest = rest.replace(block, '');
+    const fam = /font-family\s*:\s*['"]?([^'";}]+)/.exec(block);
+    const src = /src\s*:[^;}]*url\(\s*['"]?(data:[^'")]+)['"]?\s*\)/.exec(block);
+    if (!fam || !src) return null;
+    const data = /^data:[^,]*;base64,(.*)$/.exec(src[1]);
+    if (!data) return null;
+    try {
+      faces.set(fam[1].trim().toLowerCase(), b64ToArrayBuffer(data[1]));
+    } catch (_) {
+      return null;
+    }
+  }
+  if (/@[a-z-]/i.test(rest)) return null; // any other at-rule
+  const rules = [];
+  let m;
+  const re = /([^{}]+)\{([^{}]*)\}/g;
+  while ((m = re.exec(rest)) !== null) {
+    const selectors = [];
+    for (const part of m[1].split(',')) {
+      const sel = vecParseSelector(part);
+      if (!sel) return null;
+      selectors.push(sel);
+    }
+    const props = vecParseDecls(m[2], {});
+    for (const k of Object.keys(props)) {
+      if (!VEC_STYLE_PROP_SET.has(k)) return null;
+    }
+    if (Object.keys(props).length) rules.push({ selectors, props });
+  }
+  return { faces, rules };
+}
+
+// Highest specificity tier at which any of a rule's selectors matches el:
+// 2 = class, 1 = type/universal, 0 = no match.
+function vecMatchTier(el, selectors) {
+  let tier = 0;
+  const classes = (el.getAttribute('class') || '').split(/\s+/);
+  for (const sel of selectors) {
+    const tagOk = !sel.tag || sel.tag === '*' || sel.tag === el.localName;
+    const clsOk = !sel.cls || classes.includes(sel.cls);
+    if (tagOk && clsOk) tier = Math.max(tier, sel.cls ? 2 : 1);
+  }
+  return tier;
+}
+
+// Cascade (low→high): presentation attributes, CSS type rules, CSS class
+// rules, inline style attribute.
+function vecProps(el, rules) {
   const p = {};
   for (const name of VEC_PAINT_PROPS) {
     const v = el.getAttribute(name);
     if (v !== null) p[name] = v.trim();
   }
-  const style = el.getAttribute('style');
-  if (style) {
-    for (const decl of style.split(';')) {
-      const i = decl.indexOf(':');
-      if (i > 0) {
-        const k = decl.slice(0, i).trim().toLowerCase();
-        const v = decl.slice(i + 1).trim();
-        if (v) p[k] = v;
-      }
+  for (const tier of [1, 2]) {
+    for (const rule of rules || []) {
+      if (vecMatchTier(el, rule.selectors) === tier) Object.assign(p, rule.props);
     }
   }
+  const style = el.getAttribute('style');
+  if (style) vecParseDecls(style, p);
   return p;
 }
 
-// Rejects out-of-scope features document-wide; returns the Map of embedded
-// @font-face faces collected from (font-face-only) <style> blocks.
+// Rejects out-of-scope features document-wide; returns { faces, rules } from
+// the document's <style> blocks (parsed before the element checks so class
+// styling is visible regardless of <style> position).
 function vecPreScan(root) {
-  const embeddedFaces = new Map();
   const all = [root, ...root.querySelectorAll('*')];
+  const faces = new Map();
+  const rules = [];
+  for (const el of all) {
+    if (el.localName === 'style') {
+      const sheet = vecParseStylesheet(el.textContent || '');
+      if (!sheet) vecReject('<style> has unsupported rules');
+      for (const [family, buf] of sheet.faces) faces.set(family, buf);
+      rules.push(...sheet.rules);
+    }
+  }
   for (const el of all) {
     if (VEC_REJECT_ELEMENTS.has(el.localName)) vecReject(`<${el.localName}> is out of scope`);
     if (el !== root && el.localName === 'svg') vecReject('nested <svg>');
-    if (el.localName === 'style') {
-      const faces = fontFaceOnlyStyle(el.textContent || '');
-      if (!faces) vecReject('<style> beyond @font-face');
-      for (const [family, buf] of faces) embeddedFaces.set(family, buf);
-      continue;
-    }
-    const p = vecProps(el);
+    if (el.localName === 'style') continue;
+    const p = vecProps(el, rules);
     for (const k of ['mask', 'clip-path', 'filter']) {
       if (p[k] && p[k] !== 'none') vecReject(`${k} is out of scope`);
     }
@@ -128,7 +210,7 @@ function vecPreScan(root) {
     // Opacity is handled per shape: fill alpha maps to style key 16; only
     // faded PAINTED strokes reject (no known stroke-alpha key).
   }
-  return embeddedFaces;
+  return { faces, rules };
 }
 
 function vecFraction(v, dflt) {
@@ -138,7 +220,7 @@ function vecFraction(v, dflt) {
   return v.trim().endsWith('%') ? n / 100 : n;
 }
 
-function vecGradient(doc, url) {
+function vecGradient(doc, url, rules) {
   const m = /^url\(\s*['"]?#([^'")]+)['"]?\s*\)$/.exec(url);
   if (!m) vecReject(`unsupported paint ${url}`);
   const g = doc.querySelector(`[id="${m[1].replace(/"/g, '\\"')}"]`);
@@ -152,18 +234,13 @@ function vecGradient(doc, url) {
   }
   const stops = [];
   for (const stop of g.querySelectorAll(':scope > stop')) {
-    const p = { 'stop-color': stop.getAttribute('stop-color'), 'stop-opacity': stop.getAttribute('stop-opacity') };
-    const style = stop.getAttribute('style');
-    if (style) {
-      for (const decl of style.split(';')) {
-        const i = decl.indexOf(':');
-        if (i > 0) p[decl.slice(0, i).trim().toLowerCase()] = decl.slice(i + 1).trim();
-      }
+    // Full cascade so class-styled stops resolve (else they'd silently go black).
+    const p = vecProps(stop, rules);
+    if (p['stop-opacity'] !== undefined && parseFloat(p['stop-opacity']) !== 1) {
+      vecReject('partial stop-opacity');
     }
-    if (p['stop-opacity'] !== null && p['stop-opacity'] !== undefined &&
-        parseFloat(p['stop-opacity']) !== 1) vecReject('partial stop-opacity');
     const offset = Math.min(1, Math.max(0, vecFraction(stop.getAttribute('offset'), 0)));
-    stops.push([vecColor(p['stop-color'] === null || p['stop-color'] === undefined ? '#000000' : p['stop-color']), offset]);
+    stops.push([vecColor(p['stop-color'] === undefined ? '#000000' : p['stop-color']), offset]);
   }
   if (stops.length < 2) vecReject('gradient needs at least two stops');
   if (g.localName === 'radialGradient') {
@@ -337,7 +414,7 @@ async function vecWalk(ctx, el, matrix, inherited, shapes) {
   for (const child of el.children) {
     const name = child.localName;
     if (VEC_SKIP_ELEMENTS.has(name)) continue;
-    const props = vecProps(child);
+    const props = vecProps(child, ctx.rules);
     const paint = vecPaint(props, inherited);
     const local = parseTransform(child.getAttribute('transform'));
     if (!local) vecReject('unsupported transform');
@@ -369,9 +446,10 @@ async function vecConvert(svgText, opts) {
   const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
   const root = doc.documentElement;
   if (doc.querySelector('parsererror') || root.localName !== 'svg') vecReject('not valid SVG');
-  const embeddedFaces = vecPreScan(root);
+  const { faces: embeddedFaces, rules } = vecPreScan(root);
   const ctx = {
     doc,
+    rules,
     resolveFont: opts.resolveFont
       ? (spec) => opts.resolveFont(spec, embeddedFaces)
       : (spec) => defaultResolveFont(spec, embeddedFaces, opts.fetchFont),
@@ -442,7 +520,7 @@ async function vecConvert(svgText, opts) {
       vecStyleSet(style, 14, 0);
     } else if (/^url\(/.test(fill)) {
       if (fillAlpha !== 1) vecReject('translucent gradient fill'); // no known key
-      const g = vecGradient(doc, fill);
+      const g = vecGradient(doc, fill, rules);
       vecStyleSet(style, 14, 1);
       vecStyleSet(style, 15, g.stops[0][0]);
       vecStyleSet(style, 60, g.type);

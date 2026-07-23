@@ -225,10 +225,10 @@ t('text: out-of-scope text features → null', async () => {
   }
 });
 
-t('text: <style> beyond @font-face still rejects', async () => {
-  const svg = V(`<style>@font-face{font-family:'TestFace';src:url(${testFaceUri()});} .x{fill:red}</style>` +
-    '<text x="5" y="20" font-family="TestFace" font-size="10">A</text>');
-  assert((await svgToSliceClip(svg)) === null, 'non-font-face CSS must fall back to PNG');
+t('text: @font-face + a class rule in one <style> both apply', async () => {
+  const s = await one(V(`<style>@font-face{font-family:'TestFace';src:url(${testFaceUri()});} .x{fill:#00ff00}</style>` +
+    '<text class="x" x="5" y="20" font-family="TestFace" font-size="10">A</text>'));
+  assert(sv(s, 15) === '#00FF00', `class fill on text, 15 = ${sv(s, 15)}`);
 });
 
 t('text: empty or whitespace-only text renders nothing → null overall when alone', async () => {

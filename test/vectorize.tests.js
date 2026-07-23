@@ -190,6 +190,67 @@ t('vec: rotate bakes into coords (45° square grows bbox ×√2)', async () => {
 
 // --- paint ---
 
+// --- CSS <style> class/type styling (Illustrator/Figma exports) ---
+
+t('vec: class selector fills the path', async () => {
+  const s = await one(V('<defs><style>.cls-1{fill:#ea4335;}</style></defs>' +
+    '<path class="cls-1" d="M0 0 H10 V10 H0 Z"/>'));
+  assert(sv(s, 15) === '#EA4335', `15 = ${sv(s, 15)}`);
+});
+
+t('vec: type selector fills, class overrides type', async () => {
+  const s = await one(V('<defs><style>path{fill:#111111;} .hi{fill:#00ff00;}</style></defs>' +
+    '<path class="hi" d="M0 0 H10 V10 H0 Z"/>'));
+  assert(sv(s, 15) === '#00FF00', `class must beat type, 15 = ${sv(s, 15)}`);
+});
+
+t('vec: inline style beats CSS class', async () => {
+  const s = await one(V('<defs><style>.c{fill:#111111;}</style></defs>' +
+    '<path class="c" style="fill:#00ff00" d="M0 0 H10 V10 H0 Z"/>'));
+  assert(sv(s, 15) === '#00FF00', `15 = ${sv(s, 15)}`);
+});
+
+t('vec: CSS class beats presentation attribute', async () => {
+  const s = await one(V('<defs><style>.c{fill:#00ff00;}</style></defs>' +
+    '<path class="c" fill="#111111" d="M0 0 H10 V10 H0 Z"/>'));
+  assert(sv(s, 15) === '#00FF00', `15 = ${sv(s, 15)}`);
+});
+
+t('vec: class stroke + width + fill-opacity via CSS', async () => {
+  const s = await one(V('<defs><style>.c{fill:#f00;stroke:#00f;stroke-width:2;fill-opacity:0.5;}</style></defs>' +
+    '<rect class="c" width="10" height="10"/>'));
+  assert(sv(s, 15) === '#FF0000' && sv(s, 19) === '#0000FF', 'fill+stroke');
+  assert(near(sv(s, 22), 762) && near(sv(s, 16), 0.5, 0.01), 'width + alpha');
+});
+
+t('vec: CSS classes co-exist with @font-face in one <style>', async () => {
+  const s = await one(V(`<defs><style>@font-face{font-family:'X';src:url(${testFaceUri()});}` +
+    '.c{fill:#123456;}</style></defs><rect class="c" width="10" height="10"/>'));
+  assert(sv(s, 15) === '#123456', `15 = ${sv(s, 15)}`);
+});
+
+t('vec: unsupported CSS (media query, display, id, combinator) → null', async () => {
+  const cases = [
+    ['media query', '<style>@media print{.c{fill:red}}</style><rect class="c" width="10" height="10"/>'],
+    ['display prop', '<style>.c{display:none;fill:red}</style><rect class="c" width="10" height="10"/>'],
+    ['id selector', '<style>#x{fill:red}</style><rect id="x" width="10" height="10"/>'],
+    ['descendant combinator', '<style>g .c{fill:red}</style><g><rect class="c" width="10" height="10"/></g>'],
+    ['pseudo-class', '<style>.c:hover{fill:red}</style><rect class="c" width="10" height="10"/>'],
+  ];
+  for (const [label, inner] of cases) {
+    assert((await svgToSliceClip(V(inner))) === null, `${label} must fall back to PNG`);
+  }
+});
+
+t('vec: real-world logo (Google Cloud pattern) converts both paths', async () => {
+  const { shapes } = unwrap(await svgToSliceClip(V(
+    '<defs><style>.cls-1{fill:#ea4335;}.cls-2{fill:#4285f4;}</style></defs>' +
+    '<path class="cls-1" d="M0 0 H10 V10 H0 Z"/>' +
+    '<path class="cls-2" d="M12 0 H22 V10 H12 Z"/>', 'viewBox="0 0 24 12"')));
+  assert(shapes.length === 2, `${shapes.length} shapes`);
+  assert(sv(shapes[0], 15) === '#EA4335' && sv(shapes[1], 15) === '#4285F4', 'both class fills applied');
+});
+
 t('vec: fill inherits from ancestor groups', async () => {
   const s = await one(V('<g fill="#0000ff"><rect x="0" y="0" width="10" height="10"/></g>'));
   assert(sv(s, 15) === '#0000FF', `15 = ${sv(s, 15)}`);

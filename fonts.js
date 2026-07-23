@@ -16,31 +16,6 @@ function b64ToArrayBuffer(b64) {
   return bytes.buffer;
 }
 
-// A <style> block is acceptable iff it contains only @font-face rules with
-// base64 data-URI sources. Returns Map<family(lowercase), ArrayBuffer>, or
-// null when any other CSS (or a non-data source) is present.
-function fontFaceOnlyStyle(cssText) {
-  const stripped = (cssText || '').replace(/\/\*[\s\S]*?\*\//g, '');
-  const faces = stripped.match(/@font-face\s*\{[^}]*\}/g) || [];
-  let rest = stripped;
-  for (const face of faces) rest = rest.replace(face, '');
-  if (rest.trim() !== '') return null;
-  const map = new Map();
-  for (const face of faces) {
-    const fam = /font-family\s*:\s*['"]?([^'";}]+)/.exec(face);
-    const src = /src\s*:[^;}]*url\(\s*['"]?(data:[^'")]+)['"]?\s*\)/.exec(face);
-    if (!fam || !src) return null;
-    const data = /^data:[^,]*;base64,(.*)$/.exec(src[1]);
-    if (!data) return null;
-    try {
-      map.set(fam[1].trim().toLowerCase(), b64ToArrayBuffer(data[1]));
-    } catch (_) {
-      return null;
-    }
-  }
-  return map;
-}
-
 let __bundledFont = null;
 function getBundledFont() {
   if (!__bundledFont) {

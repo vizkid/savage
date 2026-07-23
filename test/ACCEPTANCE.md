@@ -44,6 +44,8 @@ a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_L
 | 26 | Drag an SVG with `<text font-family="Lobster">` (any Google Font not installed locally), optional "any site" access **granted** | Outlined text lands in the fetched face, editable shapes |
 | 27 | Same SVG with "any site" access **revoked** | Still converts — outlined text in bundled Roboto (ladder degrades, never breaks) |
 | 28 | Golden text replay: converter output for a text SVG via Cmd+Shift+9 | Renders, syncs (no 400), survives reload |
+| 29 | Drag a logo exported by Illustrator/Figma that styles fills via a `<style>` block + `class="cls-N"` (e.g. Google_Cloud_logo.svg) | Native shapes with correct brand colors — not PNG, no error toast |
+| 30 | Drag an SVG that genuinely can't convert while the tab isn't focused | Falls back to PNG and still auto-places; never the "clipboard write was blocked" error |
 
 Also: with the extension loaded and idle, the Slides console shows no errors.
 Vector run 2026-07-23: 16 (golden replay + live drop) and 17 passed live; unit

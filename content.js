@@ -253,11 +253,21 @@
         return;
       }
     }
-    const result = await convertAndWrite(svgText, null);
-    if (!result) return;
-    stashConversion(svgText, vector, result.blob);
-    const placed = await autoPaste({ blob: result.blob });
+    // PNG fallback. Auto-place is a synthetic paste and needs no clipboard, so
+    // it must not be gated on the clipboard write (which can be blocked when
+    // the drop's transient activation has lapsed) — rasterize, place, then
+    // write the clipboard best-effort for manual re-paste.
+    let blob;
+    try {
+      ({ blob } = await rasterizeSvg(svgText, await getOutputPx()));
+    } catch (err) {
+      toast(`SVG couldn't be converted: ${err.message}`, true);
+      return;
+    }
+    stashConversion(svgText, vector, blob);
+    const placed = await autoPaste({ blob });
     debug('autoPaste handled:', placed);
+    writeClipboardQuiet(svgText);
     toast(placed ? 'SVG placed' : `SVG converted. Press ${PASTE_KEY} to place it`);
   }
 
