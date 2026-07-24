@@ -363,56 +363,41 @@ function vecSubpathRings(segments) {
   return subs.filter((s) => s.length >= 3);
 }
 
-function vecRingSign(pts) {
-  let area = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const [x1, y1] = pts[i];
-    const [x2, y2] = pts[(i + 1) % pts.length];
-    area += x1 * y2 - x2 * y1;
-  }
-  return Math.sign(area);
+const VEC_CLIP_SCALE = 100;
+
+function vecRingsToClipper(segments) {
+  return vecSubpathRings(segments).map((pts) =>
+    pts.map(([x, y]) => ({ X: Math.round(x * VEC_CLIP_SCALE), Y: Math.round(y * VEC_CLIP_SCALE) })));
 }
 
-// True geometric overlap of two rings (Clipper intersection with non-trivial
-// area), not just bounding-box touch.
-function vecRingsOverlap(a, b) {
-  const S = 100;
-  const toPath = (pts) => pts.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) }));
-  const c = new ClipperLib.Clipper();
-  c.AddPath(toPath(a), ClipperLib.PolyType.ptSubject, true);
-  c.AddPath(toPath(b), ClipperLib.PolyType.ptClip, true);
-  const sol = new ClipperLib.Paths();
-  c.Execute(ClipperLib.ClipType.ctIntersection, sol,
-    ClipperLib.PolyFillType.pftNonZero, ClipperLib.PolyFillType.pftNonZero);
-  return sol.some((p) => Math.abs(ClipperLib.Clipper.Area(p)) > S);
+function vecFilledArea(paths, rule) {
+  const simp = ClipperLib.Clipper.SimplifyPolygons(paths, rule);
+  return simp.reduce((a, r) => a + Math.abs(ClipperLib.Clipper.Area(r)), 0);
 }
 
-// Slides fills freeforms evenodd, but SVG default is nonzero: same-winding
-// overlapping subpaths union under nonzero yet notch under evenodd. Detect a
-// GENUINE overlap (real intersection, not bbox touch — else adjacent
-// glyphs/bars false-trigger).
-function vecSameWindingOverlap(segments) {
-  const rings = vecSubpathRings(segments).map((pts) => ({ pts, sign: vecRingSign(pts) }));
-  if (rings.length < 2) return false;
-  for (let i = 0; i < rings.length; i++) {
-    for (let j = i + 1; j < rings.length; j++) {
-      if (rings[i].sign !== 0 && rings[i].sign === rings[j].sign &&
-          vecRingsOverlap(rings[i].pts, rings[j].pts)) {
-        return true;
-      }
-    }
-  }
-  return false;
+// Slides fills freeforms evenodd; SVG default is nonzero. They diverge only
+// when a path overlaps itself — same-winding overlapping subpaths (union
+// idiom), or a single self-intersecting / keyhole contour (a counter reached
+// through a zero-width slit, common in logo letter outlines). Detect that by
+// comparing the nonzero- and evenodd-filled areas of the same flattened
+// contours: equal → the rules agree, emit exact béziers untouched; differ →
+// normalize. Catches keyholes a pairwise-subpath test misses, and never
+// false-fires on adjacent-but-disjoint shapes (their areas match).
+function vecNeedsEvenoddFix(segments) {
+  const paths = vecRingsToClipper(segments);
+  if (paths.length < 1) return false;
+  const nz = vecFilledArea(paths, ClipperLib.PolyFillType.pftNonZero);
+  const eo = vecFilledArea(paths, ClipperLib.PolyFillType.pftEvenOdd);
+  return nz > 0 && Math.abs(nz - eo) > nz * 0.001;
 }
 
-// Union a nonzero-fill path's subpaths into evenodd-safe M/L/Z rings (Clipper,
-// as with glyphs). Flattens curves — acceptable at slide scale, and only used
-// on the rare union-idiom path that would otherwise notch.
+// Normalize a nonzero-fill path into evenodd-safe M/L/Z rings (Clipper, as
+// with glyphs). Flattens curves — acceptable at slide scale, and only used on
+// the rare path whose nonzero fill differs from evenodd.
 function vecNormalizeFill(segments) {
-  const S = 100;
-  const paths = vecSubpathRings(segments).map((pts) =>
-    pts.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) })));
-  const clean = ClipperLib.Clipper.SimplifyPolygons(paths, ClipperLib.PolyFillType.pftNonZero);
+  const S = VEC_CLIP_SCALE;
+  const clean = ClipperLib.Clipper.SimplifyPolygons(
+    vecRingsToClipper(segments), ClipperLib.PolyFillType.pftNonZero);
   const out = [];
   for (const ring of clean) {
     if (ring.length < 3) continue;
@@ -541,16 +526,17 @@ async function vecConvert(svgText, opts) {
   const commands = [];
   const childIds = [];
   for (const shape of shapes) {
-    // Union genuine same-winding overlaps so they don't notch under Slides'
-    // evenodd fill. A stroked union-idiom path would stroke the merged outline
-    // (not each subpath), so that rare case falls back to PNG instead.
+    // When a nonzero path's fill differs from evenodd (overlap / keyhole /
+    // self-intersection), normalize it so it doesn't notch under Slides'
+    // evenodd fill. A stroked such path would stroke the merged outline (not
+    // the original contours), so that rare case falls back to PNG instead.
     let segments = shape.segments;
     const isFilled = segments[0][0] === 'M' &&
       !(segments.length === 2 && segments[1][0] === 'L');
     if (!shape.isText && isFilled && shape.paint.fill !== 'none' &&
         (shape.paint['fill-rule'] || 'nonzero') !== 'evenodd' &&
-        vecSameWindingOverlap(segments)) {
-      if (shape.paint.stroke !== 'none') vecReject('stroked union-idiom path');
+        vecNeedsEvenoddFix(segments)) {
+      if (shape.paint.stroke !== 'none') vecReject('stroked self-overlapping path');
       segments = vecNormalizeFill(segments);
     }
     const { ops, coords } = vecEmitPath(segments, shape.matrix);

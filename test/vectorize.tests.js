@@ -336,9 +336,36 @@ t('vec: nonzero union (same-winding overlap) is merged, not notched', async () =
   assert(moves === 1, `union must be one merged ring, got ${moves} (would notch)`);
 });
 
-t('vec: STROKED same-winding union → null (stroke-on-union differs)', async () => {
+t('vec: STROKED self-overlapping path → null (stroke-on-union differs)', async () => {
   const svg = V('<path fill="#f00" stroke="#000" d="M0 0 H60 V60 H0 Z M30 30 H90 V90 H30 Z"/>');
-  assert((await svgToSliceClip(svg)) === null, 'stroked union-idiom must fall back to PNG');
+  assert((await svgToSliceClip(svg)) === null, 'stroked overlap must fall back to PNG');
+});
+
+t('vec: single self-intersecting subpath (keyhole/wound-twice) is normalized', async () => {
+  // One subpath tracing the square twice: nonzero fills it, evenodd would
+  // empty it (winding 2). The pairwise-overlap check (needs ≥2 subpaths)
+  // missed this — the crack in the stance logo's 'e'. Area comparison catches
+  // it and normalizes to the correct nonzero region (one solid square).
+  const s = await one(V('<path fill="#f00" d="M0 0 H80 V80 H0 Z M0 0 H80 V80 H0 Z"/>'));
+  const { ops } = path12(s);
+  const moves = opPairs(ops).filter(([op]) => op === 0).length;
+  assert(moves === 1, `double-wound square must normalize to one ring, got ${moves}`);
+});
+
+t('vec: keyhole counter (opposite-wound via slit) normalizes to outer + hole', async () => {
+  // Single contour reaching a counter through a zero-width slit (how logo
+  // letters draw the 'e'/'a' aperture). Under evenodd the slit would crack;
+  // normalized it becomes a clean outer ring + hole.
+  const s = await one(V('<path fill="#f00" d="M0 0 H100 V100 H0 V55 H30 V30 H70 V70 H30 V55 H0 Z"/>'));
+  const { coords } = path12(s);
+  const seen = new Set();
+  let dup = 0;
+  for (let i = 0; i < coords.length; i += 2) {
+    const k = `${coords[i]},${coords[i + 1]}`;
+    if (seen.has(k)) dup++;
+    seen.add(k);
+  }
+  assert(dup === 0, `slit points must be resolved away, ${dup} coincident remain`);
 });
 
 t('vec: same-winding subpaths with only touching bboxes convert (no false reject)', async () => {
