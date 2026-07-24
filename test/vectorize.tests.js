@@ -251,6 +251,20 @@ t('vec: real-world logo (Google Cloud pattern) converts both paths', async () =>
   assert(sv(shapes[0], 15) === '#EA4335' && sv(shapes[1], 15) === '#4285F4', 'both class fills applied');
 });
 
+t('vec: fill-rule on the root <svg> is inherited (Serif/Affinity exports)', async () => {
+  // Same-winding outer+inner: nonzero → solid, evenodd → hole. The root
+  // declares evenodd, so the path must render WITH a hole (two rings), not be
+  // normalized to the nonzero solid.
+  const eo = await one(V('<path fill="#f00" d="M0 0 H100 V100 H0 Z M30 30 H70 V70 H30 Z"/>',
+    'viewBox="0 0 100 100" style="fill-rule:evenodd"'));
+  const eoMoves = opPairs(path12(eo).ops).filter(([op]) => op === 0).length;
+  assert(eoMoves === 2, `evenodd root must keep the hole (2 rings), got ${eoMoves}`);
+  // Without the root declaration the same path is nonzero → solid (one ring).
+  const nz = await one(V('<path fill="#f00" d="M0 0 H100 V100 H0 Z M30 30 H70 V70 H30 Z"/>'));
+  const nzMoves = opPairs(path12(nz).ops).filter(([op]) => op === 0).length;
+  assert(nzMoves === 1, `nonzero default must fill solid (1 ring), got ${nzMoves}`);
+});
+
 t('vec: fill inherits from ancestor groups', async () => {
   const s = await one(V('<g fill="#0000ff"><rect x="0" y="0" width="10" height="10"/></g>'));
   assert(sv(s, 15) === '#0000FF', `15 = ${sv(s, 15)}`);

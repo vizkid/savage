@@ -508,7 +508,9 @@ async function vecConvert(svgText, opts) {
   );
 
   const shapes = [];
-  await vecWalk(ctx, root, rootMatrix, {
+  // SVG defaults, then the root <svg>'s own inherited paint/text props layered
+  // on top (Serif/Affinity put fill-rule:evenodd here; children inherit it).
+  const rootInherited = vecPaint(vecProps(root, rules), {
     fill: 'black',
     stroke: 'none',
     'stroke-width': '1',
@@ -520,7 +522,8 @@ async function vecConvert(svgText, opts) {
     'font-size': '16',
     'font-weight': '400',
     'text-anchor': 'start',
-  }, shapes);
+  });
+  await vecWalk(ctx, root, rootMatrix, rootInherited, shapes);
   if (!shapes.length) vecReject('nothing convertible');
 
   const commands = [];
