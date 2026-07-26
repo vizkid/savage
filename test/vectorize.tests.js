@@ -15,10 +15,13 @@ function unwrap(flavors) {
   assert(flavors && typeof flavors === 'object', 'converter returned null');
   const wrapper = JSON.parse(flavors[VTYPE]);
   const data = JSON.parse(wrapper.data);
-  const shapes = data.resolved
-    .filter((c) => c[0] === 3)
-    .map((c) => ({ id: c[1], type: c[2], xf: c[3], style: c[4], parent: c[5] }));
-  return { wrapper, data, shapes };
+  const cmd3 = (c) => ({ id: c[1], type: c[2], xf: c[3], style: c[4], parent: c[5] });
+  // Converted shapes are type 138 freeforms; the connector anchor is a type-6
+  // preset rect. Keep them separate so shape counts ignore the anchor.
+  const shapes = data.resolved.filter((c) => c[0] === 3 && c[2] === 138).map(cmd3);
+  const anchor = (data.resolved.find((c) => c[0] === 3 && c[2] === 6) || null);
+  const groups = data.resolved.filter((c) => c[0] === 2);
+  return { wrapper, data, shapes, anchor: anchor && cmd3(anchor), groups };
 }
 async function one(svg) {
   const { shapes } = unwrap(await svgToSliceClip(svg));
@@ -489,24 +492,51 @@ t('vec: two elements → two shapes, ids consistent across resolved/unresolved',
     'unresolved must clone resolved');
 });
 
-t('vec: multi-shape paste is wrapped in one group (cmd 2) over every child', async () => {
-  const { data, shapes } = unwrap(await svgToSliceClip(
+t('vec: paste is wrapped in one group over the anchor + every shape', async () => {
+  const { data, shapes, anchor, groups } = unwrap(await svgToSliceClip(
     V('<rect x="0" y="0" width="10" height="10" fill="#f00"/>' +
       '<rect x="20" y="0" width="10" height="10" fill="#0f0"/>' +
       '<circle cx="40" cy="5" r="4" fill="#00f"/>', 'viewBox="0 0 60 10"')));
-  const groups = data.resolved.filter((c) => c[0] === 2);
   assert(groups.length === 1, `expected one group, got ${groups.length}`);
+  assert(anchor, 'a connector anchor rect must be present');
   const g = groups[0];
-  assert(JSON.stringify(g[2]) === JSON.stringify(shapes.map((s) => s.id)),
-    'group children must list every shape id in order');
+  assert(JSON.stringify(g[2]) === JSON.stringify([anchor.id, ...shapes.map((s) => s.id)]),
+    'group lists the anchor first, then every shape, in order');
   assert(JSON.stringify(g[3]) === '[1,0,0,1,0,0]' && g[4] === 'p', 'identity transform, parent p');
   assert(data.resolved[data.resolved.length - 1][0] === 2, 'group is the last command');
   shapes.forEach((s) => assert(s.parent === 'p', 'children keep parent p'));
 });
 
-t('vec: single-shape paste has no group command', async () => {
-  const { data } = unwrap(await svgToSliceClip(V('<rect width="10" height="10" fill="#f00"/>')));
-  assert(data.resolved.every((c) => c[0] !== 2), 'no group for a lone shape');
+t('vec: even a single shape is grouped with a connector anchor', async () => {
+  const { shapes, anchor, groups } = unwrap(await svgToSliceClip(V('<rect width="10" height="10" fill="#f00"/>')));
+  assert(shapes.length === 1 && anchor && groups.length === 1, 'lone shape gets anchor + group');
+});
+
+t('vec: anchor is a transparent type-6 rect covering the union bbox', async () => {
+  // Two 10-unit squares at x=0 and x=20 → union spans x 0..30, y 0..10.
+  const { shapes, anchor } = unwrap(await svgToSliceClip(
+    V('<rect x="0" y="0" width="10" height="10" fill="#f00"/>' +
+      '<rect x="20" y="0" width="10" height="10" fill="#0f0"/>', 'viewBox="0 0 30 10"')));
+  assert(anchor.type === 6, `anchor must be preset rect type 6, got ${anchor.type}`);
+  const sv2 = (a, k) => { const i = a.style.indexOf(k); return i >= 0 ? a.style[i + 1] : undefined; };
+  assert(sv2(anchor, 14) === 0, 'anchor fill must be off (transparent)');
+  assert(sv2(anchor, 18) === 0, 'anchor stroke must be off');
+  // preset rect: page size = transform a/d × 120000; origin = tx,ty.
+  const bounds = shapes.reduce((b, s) => {
+    const w = s.style[s.style.indexOf(8) + 1];
+    const h = s.style[s.style.indexOf(9) + 1];
+    return [Math.min(b[0], s.xf[4]), Math.min(b[1], s.xf[5]),
+      Math.max(b[2], s.xf[4] + w), Math.max(b[3], s.xf[5] + h)];
+  }, [Infinity, Infinity, -Infinity, -Infinity]);
+  assert(near(anchor.xf[4], bounds[0], 2) && near(anchor.xf[5], bounds[1], 2), 'anchor origin = bbox min');
+  assert(near(anchor.xf[0] * 120000, bounds[2] - bounds[0], 3), 'anchor width covers bbox');
+  assert(near(anchor.xf[3] * 120000, bounds[3] - bounds[1], 3), 'anchor height covers bbox');
+});
+
+t('vec: null conversions never emit an anchor', async () => {
+  assert((await svgToSliceClip(V('<text x="0" y="0">hi</text>'))) !== null, 'text converts (curves)');
+  assert((await svgToSliceClip(V('<image width="5" height="5" href="data:image/png;base64,x"/>'))) === null,
+    'image still PNG-falls-back (no partial anchor)');
 });
 
 t('vec: envelope is the sanitized template, ids/guid fresh per call', async () => {

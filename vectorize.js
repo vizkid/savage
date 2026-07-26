@@ -538,6 +538,10 @@ async function vecConvert(svgText, opts) {
 
   const commands = [];
   const childIds = [];
+  let unionMinX = Infinity;
+  let unionMinY = Infinity;
+  let unionMaxX = -Infinity;
+  let unionMaxY = -Infinity;
   for (const shape of shapes) {
     // When a nonzero path's fill differs from evenodd (overlap / keyhole /
     // self-intersection), normalize it so it doesn't notch under Slides'
@@ -618,15 +622,30 @@ async function vecConvert(svgText, opts) {
     const id = vecFreshId();
     childIds.push(id);
     commands.push([3, id, 138, [1, 0, 0, 1, minX, minY], style, 'p']);
+    unionMinX = Math.min(unionMinX, minX);
+    unionMinY = Math.min(unionMinY, minY);
+    unionMaxX = Math.max(unionMaxX, maxX);
+    unionMaxY = Math.max(unionMaxY, maxY);
   }
 
-  // Wrap a multi-shape paste in one group so it drags/scales/selects as a
-  // single object (structure per research/dumps p-group: children keep
-  // parent 'p'; the group command carries the child-id list). Cmd 2 =
-  // [id, childIds, identity affine, parent].
-  if (childIds.length > 1) {
-    commands.push([2, vecFreshId(), childIds, [1, 0, 0, 1, 0, 0], 'p']);
-  }
+  // Prepend a transparent preset-rectangle anchor covering the union bounding
+  // box. Freeform (type 138) shapes carry no connection sites, so a diagram
+  // connector has nothing to snap to; a type-6 preset rect does. Fill and
+  // stroke are off (invisible), and it sits first so it's behind the artwork.
+  // Structure verified from research/dumps p-group.
+  const anchorId = vecFreshId();
+  const w = unionMaxX - unionMinX;
+  const h = unionMaxY - unionMinY;
+  const anchor = [3, anchorId, 6,
+    [w / 120000, 0, 0, h / 120000, unionMinX, unionMinY],
+    [14, 0, 15, '#FFFFFF', 18, 0, 22, 381, 60, 0], 'p'];
+  const anchorTail = [17, anchorId, null, 0, 1, [], [12, 2]];
+  commands.unshift(anchor, anchorTail);
+
+  // Wrap the anchor + every shape in one group so the whole paste drags,
+  // scales, and connects as a single object (children keep parent 'p'; the
+  // group carries the child-id list). Cmd 2 = [id, childIds, identity, parent].
+  commands.push([2, vecFreshId(), [anchorId, ...childIds], [1, 0, 0, 1, 0, 0], 'p']);
 
   const data = {
     resolved: commands,
