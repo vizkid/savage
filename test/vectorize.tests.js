@@ -229,6 +229,14 @@ t('vec: CSS classes co-exist with @font-face in one <style>', async () => {
   assert(sv(s, 15) === '#123456', `15 = ${sv(s, 15)}`);
 });
 
+t('vec: harmless CSS props (clip-rule, stroke cosmetics) are ignored, not rejected', async () => {
+  // ServiceNow / Adobe exports: .st0{fill-rule:evenodd;clip-rule:evenodd;fill:…}
+  const s = await one(V('<defs><style>.st0{fill-rule:evenodd;clip-rule:evenodd;fill:#62D84E;' +
+    'stroke-linejoin:round;stroke-miterlimit:2;}</style></defs>' +
+    '<path class="st0" d="M0 0 H10 V10 H0 Z"/>'));
+  assert(sv(s, 15) === '#62D84E', `15 = ${sv(s, 15)}`);
+});
+
 t('vec: unsupported CSS (media query, display, id, combinator) → null', async () => {
   const cases = [
     ['media query', '<style>@media print{.c{fill:red}}</style><rect class="c" width="10" height="10"/>'],

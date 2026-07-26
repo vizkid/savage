@@ -86,10 +86,20 @@ function vecColor(str) {
   return c.hex;
 }
 
+// Props we recognize but that don't change our output — safe to accept and
+// ignore in a <style> block: clip-rule (only affects clipping, which we
+// reject), stroke cosmetics Slides can't represent (defaults apply), and dead
+// Adobe/Fireworks export attrs. Keeps these common exports out of PNG fallback.
+const VEC_STYLE_IGNORED = [
+  'clip-rule', 'stroke-linejoin', 'stroke-linecap', 'stroke-miterlimit',
+  'stroke-dashoffset', 'enable-background', 'overflow',
+];
 // Props Savage understands in a <style> block. Anything else (display,
 // visibility, transform, mix-blend-mode, …) forces PNG fallback rather than
 // silently mis-render, since we can't honor it.
-const VEC_STYLE_PROP_SET = new Set([...VEC_PAINT_PROPS, 'stop-color', 'stop-opacity']);
+const VEC_STYLE_PROP_SET = new Set([
+  ...VEC_PAINT_PROPS, 'stop-color', 'stop-opacity', ...VEC_STYLE_IGNORED,
+]);
 
 function vecParseDecls(body, out) {
   for (const decl of body.split(';')) {
