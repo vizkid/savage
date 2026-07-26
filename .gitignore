@@ -1,3 +1,6 @@
 .DS_Store
 store/*.zip
 research/dumps/
+
+# handoffs live in ~/.claude-personal/plans/ (Chrome rejects _-prefixed dirs in unpacked loads)
+_docs/
