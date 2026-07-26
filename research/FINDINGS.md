@@ -55,6 +55,17 @@ Commands seen:
   UNCHANGED — they keep `parent:"p"`; the hierarchy lives only in the group's
   child-id list. No style, no cmd-17 companion. Verified: injecting this makes
   a multi-shape paste select/drag/scale as one object and syncs.
+
+**Connection sites (diagram connectors), pinned 2026-07-26** (dump p-connector):
+freeform shapes (type 138) have NO connection sites, so diagram connectors
+can't snap to them. **Type-6 preset rectangles DO.** To make a paste
+connectable, prepend a transparent type-6 rect covering the union bounding box
+and include it in the group. The rect: `[3, id, 6, [W/120000,0,0,H/120000,x,y],
+[14,0, 15,"#FFFFFF", 18,0, 22,381, 60,0], "p"]` (14:0 fill-off, 18:0
+stroke-off = invisible) plus its cmd-17 companion `[17, id, null, 0, 1, [],
+[12, 2]]` (type-6 presets carry the tail; freeforms don't). Preset size comes
+from the transform on the 120000-unit unit square. Verified: connectors snap
+to the grouped node and it syncs.
 - `[17, id, null, 0, 1, [], [12, 2]]` — accompanies shapes; role unknown;
   copying it verbatim works.
 

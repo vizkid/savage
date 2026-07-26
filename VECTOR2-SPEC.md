@@ -14,7 +14,8 @@ All four planned milestones plus fixes surfaced during live acceptance:
 | Text → curves | Embedded `@font-face` → Google Fonts (css2 + legacy-UA DNR rule, resourceType `other`) → bundled Roboto. Glyph outlines normalized nonzero→evenodd via Clipper (whole run, so connecting scripts don't notch) |
 | **CSS styling** *(added)* | `<style>` class/type selectors with the full cascade (presentation < type < class < inline) — Illustrator/Figma/logo exports now convert |
 | **Fill alpha** *(added)* | `fill-opacity`/`opacity`/rgba → style key 16 (native translucent fills) |
-| **Grouping** *(added)* | Multi-shape pastes wrapped in one group (cmd 2) so they drag/scale/select as a unit |
+| **Grouping** *(added)* | Every paste wrapped in one group (cmd 2) so it drags/scales/selects as a unit |
+| **Connector anchor** *(added)* | A transparent type-6 preset rect covering the bbox is grouped behind the artwork — freeforms have no connection sites, so this makes the paste snap to diagram connectors |
 | Fill rule | Genuine same-winding overlaps (real intersection test, not bbox) unioned via Clipper; only stroked union-idiom paths → PNG |
 | PNG fallback | Rasterize + synthetic auto-place decoupled from the clipboard write, so a blocked write never hard-errors |
 
