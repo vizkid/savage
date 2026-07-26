@@ -127,6 +127,10 @@
   }
 
   function convertToVector(svgText) {
+    // The converter libs load in a separate content-script entry scoped to the
+    // Slides top frame (manifest). If they somehow aren't present yet, degrade
+    // to the PNG path rather than throw.
+    if (typeof svgToSliceClip !== 'function') return Promise.resolve(null);
     return svgToSliceClip(svgText, { fetchFont: fetchFontViaSw });
   }
 
