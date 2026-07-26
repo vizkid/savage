@@ -24,34 +24,47 @@
 <body>
 <div class="wrap">
   <h1>Savage Privacy Policy</h1>
-  <p class="muted">Last updated: 2026-07-22</p>
+  <p class="muted">Last updated: 2026-07-26</p>
 
-  <p>Savage converts SVGs into PNG images on their way into Google Slides.
-  Everything happens locally in your browser.</p>
+  <p>Savage converts SVGs into native, editable Google Slides shapes (or a PNG
+  when a shape can't be represented). All conversion happens locally in your
+  browser.</p>
 
   <h2>Clipboard</h2>
   <p>When a Google Slides tab gains focus (or you press Ctrl/Cmd there), Savage
   reads your clipboard to check whether it holds an SVG. If it does, the SVG is
-  converted locally and the clipboard is rewritten with the resulting PNG plus
-  the original markup. Clipboard contents are processed in memory only, never
+  converted locally and the clipboard is rewritten with the result plus the
+  original markup. Clipboard contents are processed in memory only, never
   stored, logged, or transmitted anywhere.</p>
 
   <h2>Storage</h2>
-  <p>One number is saved in Chrome's extension storage: your chosen output size.
-  Nothing else is stored.</p>
+  <p>One number is saved in Chrome's extension storage: your chosen PNG output
+  size (used only for the fallback path). Nothing else is stored.</p>
 
   <h2>Network</h2>
-  <p>Savage makes no network requests, with one exception: when you drag an SVG
-  <em>image from another website</em> into Slides, the extension fetches that
-  image's URL to get the SVG (for Wikipedia/Wikimedia pages this includes a
-  MediaWiki API lookup to locate the file). Nothing about you or your documents
-  is sent, only the request for the file you just dragged.</p>
+  <p>Savage makes no network requests during normal use. There are two
+  exceptions, both triggered only by an action you take and both requiring the
+  optional "fetch from any site" permission described below:</p>
+  <ul>
+    <li>When you drag an SVG <em>image from another website</em> into Slides,
+    the extension fetches that image's URL to get the SVG (for Wikipedia and
+    Wikimedia pages this includes a MediaWiki API lookup to locate the file).</li>
+    <li>When you paste an SVG containing text and the font it uses isn't
+    embedded in the file, Savage fetches that font from
+    <em>Google Fonts</em> (fonts.googleapis.com / fonts.gstatic.com) so the
+    text can be converted to editable outlines. Only the font family name is
+    requested; if the font isn't available, a bundled default is used instead.</li>
+  </ul>
+  <p>In both cases only the request for the resource itself is sent — nothing
+  about you or your documents.</p>
 
   <h2>Optional permission</h2>
   <p>By default Savage has no access to websites' data. The optional "fetch from
-  any site" setting grants host access solely so dragged-URL fetches work on
-  sites that block cross-origin requests. It is off unless you enable it, and
-  you can revoke it in the popup at any time.</p>
+  any site" setting grants host access solely for the two fetches above
+  (dragged-SVG URLs and Google Fonts). It is off unless you enable it, and you
+  can revoke it in the popup at any time; without it, dragged SVGs still work
+  from sites that allow cross-origin requests, and SVG text falls back to a
+  bundled font.</p>
 
   <h2>What Savage does not do</h2>
   <ul>

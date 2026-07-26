@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Savage",
-  "version": "1.1.0",
-  "description": "Convert SVGs to PNGs for Google Slides. Copy or drag SVGs in and they arrive as high-res transparent PNGs.",
+  "version": "2.0.0",
+  "description": "Paste SVGs into Google Slides as native, editable shapes. Copy or drag one in — it lands recolorable and scalable, or PNG.",
   "permissions": ["clipboardRead", "clipboardWrite", "storage", "declarativeNetRequestWithHostAccess"],
   "optional_host_permissions": ["<all_urls>"],
   "homepage_url": "https://github.com/vizkid/savage",
