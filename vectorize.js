@@ -19,11 +19,14 @@ const VEC_PASTE_Y = 18288;
 // when its content is exclusively @font-face rules (checked in the pre-scan).
 const VEC_REJECT_ELEMENTS = new Set([
   'tspan', 'textPath', 'image', 'use', 'foreignObject', 'pattern',
-  'mask', 'clipPath', 'filter', 'script', 'switch', 'symbol',
+  'mask', 'filter', 'script', 'switch', 'symbol',
   'marker', 'animate', 'animateMotion', 'animateTransform', 'set',
 ]);
+// clipPath is resolved on demand (vecClipBounds) and its definition is skipped
+// wherever it sits — a rectangular frame that contains the content is a no-op.
 const VEC_SKIP_ELEMENTS = new Set([
-  'defs', 'title', 'desc', 'metadata', 'linearGradient', 'radialGradient', 'stop', 'style',
+  'defs', 'title', 'desc', 'metadata', 'linearGradient', 'radialGradient', 'stop',
+  'style', 'clipPath',
 ]);
 const VEC_PAINT_PROPS = [
   'fill', 'stroke', 'stroke-width', 'fill-rule', 'opacity', 'fill-opacity',
@@ -213,9 +216,11 @@ function vecPreScan(root) {
     // Nested <svg> is handled as a viewport in the walk (vecNestedViewport).
     if (el.localName === 'style') continue;
     const p = vecProps(el, rules);
-    for (const k of ['mask', 'clip-path', 'filter']) {
+    for (const k of ['mask', 'filter']) {
       if (p[k] && p[k] !== 'none') vecReject(`${k} is out of scope`);
     }
+    // clip-path is handled in the walk: a rectangular frame that contains the
+    // clipped content is a no-op (honored); anything that cuts → PNG.
     if (p['stroke-dasharray'] && p['stroke-dasharray'] !== 'none') vecReject('stroke-dasharray');
     // Opacity is handled per shape: fill alpha maps to style key 16; only
     // faded PAINTED strokes reject (no known stroke-alpha key).
@@ -501,6 +506,60 @@ function vecNestedViewport(el, parentVp) {
   return { matrix: [sx, 0, 0, sy, tx, ty], viewport: { w: vbW, h: vbH } };
 }
 
+// Page-space bbox of collected shapes (anchor + control points — a small
+// overestimate, fine for a containment test). null if empty.
+function vecShapesBounds(arr) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let any = false;
+  for (const sh of arr) {
+    for (const seg of sh.segments) {
+      for (let i = 1; i + 1 < seg.length; i += 2) {
+        const [x, y] = matApply(sh.matrix, seg[i], seg[i + 1]);
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        any = true;
+      }
+    }
+  }
+  return any ? { minX, minY, maxX, maxY } : null;
+}
+
+// A clip-path referencing a clipPath that is exactly one <rect> → its
+// page-space bounds. Rejects anything we can't treat as a rectangular frame
+// (non-rect shape, objectBoundingBox units, or a rotated/skewed clip).
+function vecClipBounds(url, m, ctx) {
+  const ref = /^url\(\s*['"]?#([^'")]+)['"]?\s*\)$/.exec(url);
+  if (!ref) vecReject('unsupported clip-path');
+  const clip = ctx.doc.querySelector(`[id="${ref[1].replace(/"/g, '\\"')}"]`);
+  if (!clip || clip.localName !== 'clipPath') vecReject('clip-path reference');
+  if (clip.getAttribute('clipPathUnits') === 'objectBoundingBox') vecReject('objectBoundingBox clip');
+  const kids = [...clip.children].filter((k) => k.localName !== 'title' && k.localName !== 'desc');
+  if (kids.length !== 1 || kids[0].localName !== 'rect') vecReject('non-rect clip');
+  const r = kids[0];
+  const rx = parseFloat(r.getAttribute('x') || '0') || 0;
+  const ry = parseFloat(r.getAttribute('y') || '0') || 0;
+  const rw = parseFloat(r.getAttribute('width') || '0');
+  const rh = parseFloat(r.getAttribute('height') || '0');
+  if (!(rw > 0 && rh > 0)) vecReject('degenerate clip rect');
+  const rt = parseTransform(r.getAttribute('transform'));
+  if (!rt) vecReject('clip rect transform');
+  const cm = matMultiply(m, rt);
+  if (Math.abs(cm[1]) > 1e-6 || Math.abs(cm[2]) > 1e-6) vecReject('rotated clip'); // not axis-aligned
+  const p1 = matApply(cm, rx, ry);
+  const p2 = matApply(cm, rx + rw, ry + rh);
+  return {
+    minX: Math.min(p1[0], p2[0]), minY: Math.min(p1[1], p2[1]),
+    maxX: Math.max(p1[0], p2[0]), maxY: Math.max(p1[1], p2[1]),
+  };
+}
+
+const VEC_CLIP_TOL = 762; // 2 CSS px of slack for control-point overshoot
+
 async function vecWalk(ctx, el, matrix, inherited, shapes, viewport) {
   for (const child of el.children) {
     const name = child.localName;
@@ -510,32 +569,54 @@ async function vecWalk(ctx, el, matrix, inherited, shapes, viewport) {
     const local = parseTransform(child.getAttribute('transform'));
     if (!local) vecReject('unsupported transform');
     const m = matMultiply(matrix, local);
-    if (name === 'g' || name === 'a') {
-      await vecWalk(ctx, child, m, paint, shapes, viewport);
-      continue;
-    }
-    if (name === 'svg') {
-      const nested = vecNestedViewport(child, viewport);
-      await vecWalk(ctx, child, matMultiply(m, nested.matrix), paint, shapes, nested.viewport);
-      continue;
-    }
-    if (name === 'text') {
-      const segments = await vecTextSegments(ctx, child, paint);
-      // isText: union output is already evenodd-safe; outer rings of one
-      // letterform can share bboxes, so the nonzero-union check must not run.
-      if (segments.length) shapes.push({ segments, matrix: m, paint, isText: true });
-      continue;
-    }
-    const segments = shapeToSegments(child);
-    if (segments === null) {
-      if (child.children.length === 0 && !name.match(/^(rect|circle|ellipse|line|polyline|polygon|path)$/)) {
-        continue; // unknown empty element renders nothing in SVG too
+
+    // clip-path: only a rectangular frame that contains all the clipped
+    // content is honored (as a no-op). A clip that actually cuts geometry we
+    // can't reproduce → PNG fallback.
+    const clip = props['clip-path'];
+    if (clip && clip !== 'none') {
+      const bounds = vecClipBounds(clip, m, ctx);
+      const temp = [];
+      await vecEmitChild(ctx, child, m, paint, temp, viewport, name);
+      const cb = vecShapesBounds(temp);
+      if (cb && (cb.minX < bounds.minX - VEC_CLIP_TOL || cb.minY < bounds.minY - VEC_CLIP_TOL ||
+                 cb.maxX > bounds.maxX + VEC_CLIP_TOL || cb.maxY > bounds.maxY + VEC_CLIP_TOL)) {
+        vecReject('clip-path removes content');
       }
-      vecReject(`unconvertible <${name}>`);
+      for (const sh of temp) shapes.push(sh);
+      continue;
     }
-    if (segments.length === 0) continue; // degenerate: renders nothing
-    shapes.push({ segments, matrix: m, paint });
+
+    await vecEmitChild(ctx, child, m, paint, shapes, viewport, name);
   }
+}
+
+async function vecEmitChild(ctx, child, m, paint, shapes, viewport, name) {
+  if (name === 'g' || name === 'a') {
+    await vecWalk(ctx, child, m, paint, shapes, viewport);
+    return;
+  }
+  if (name === 'svg') {
+    const nested = vecNestedViewport(child, viewport);
+    await vecWalk(ctx, child, matMultiply(m, nested.matrix), paint, shapes, nested.viewport);
+    return;
+  }
+  if (name === 'text') {
+    const segments = await vecTextSegments(ctx, child, paint);
+    // isText: union output is already evenodd-safe; outer rings of one
+    // letterform can share bboxes, so the nonzero-union check must not run.
+    if (segments.length) shapes.push({ segments, matrix: m, paint, isText: true });
+    return;
+  }
+  const segments = shapeToSegments(child);
+  if (segments === null) {
+    if (child.children.length === 0 && !name.match(/^(rect|circle|ellipse|line|polyline|polygon|path)$/)) {
+      return; // unknown empty element renders nothing in SVG too
+    }
+    vecReject(`unconvertible <${name}>`);
+  }
+  if (segments.length === 0) return; // degenerate: renders nothing
+  shapes.push({ segments, matrix: m, paint });
 }
 
 async function vecConvert(svgText, opts) {

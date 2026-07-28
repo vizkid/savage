@@ -276,6 +276,23 @@ t('vec: unsupported CSS (media query, display, id, combinator) → null', async 
   }
 });
 
+t('vec: no-op frame clip (content fits the clip rect) is ignored, converts', async () => {
+  // The Figma/Atlassian pattern: content wrapped in <g clip-path> whose rect
+  // is just the frame bounds. Content fits → clip removes nothing → convert.
+  const { shapes } = unwrap(await svgToSliceClip(V(
+    '<defs><clipPath id="c"><rect width="100" height="100"/></clipPath></defs>' +
+    '<g clip-path="url(#c)"><rect x="10" y="10" width="80" height="80" fill="#f00"/></g>')));
+  assert(shapes.length === 1, `content must survive the no-op clip, got ${shapes.length}`);
+});
+
+t('vec: frame clip with a transform (offset rect covering content) is ignored', async () => {
+  const { shapes } = unwrap(await svgToSliceClip(V(
+    '<defs><clipPath id="c"><rect width="40" height="50" transform="translate(15 12)"/></clipPath></defs>' +
+    '<g clip-path="url(#c)"><rect x="16" y="13" width="38" height="48" fill="#f00"/></g>',
+    'viewBox="0 0 100 100"')));
+  assert(shapes.length === 1, 'offset frame clip that covers content converts');
+});
+
 t('vec: real-world logo (Google Cloud pattern) converts both paths', async () => {
   const { shapes } = unwrap(await svgToSliceClip(V(
     '<defs><style>.cls-1{fill:#ea4335;}.cls-2{fill:#4285f4;}</style></defs>' +
@@ -444,7 +461,10 @@ t('vec: out-of-scope features → null', async () => {
       '<rect width="10" height="10" fill="url(#p)"/>'],
     ['mask', '<defs><mask id="m"><rect width="10" height="10" fill="#fff"/></mask></defs>' +
       '<rect width="10" height="10" fill="#f00" mask="url(#m)"/>'],
-    ['clip-path', '<defs><clipPath id="c"><rect width="5" height="5"/></clipPath></defs>' +
+    // clip-path that actually cuts content (10×10 into 5×5) stays PNG.
+    ['clip-path cuts', '<defs><clipPath id="c"><rect width="5" height="5"/></clipPath></defs>' +
+      '<rect width="10" height="10" fill="#f00" clip-path="url(#c)"/>'],
+    ['non-rect clip', '<defs><clipPath id="c"><circle cx="5" cy="5" r="5"/></clipPath></defs>' +
       '<rect width="10" height="10" fill="#f00" clip-path="url(#c)"/>'],
     ['filter', '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>' +
       '<rect width="10" height="10" fill="#f00" filter="url(#f)"/>'],
