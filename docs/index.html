@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Savage is a Chrome extension that converts SVGs to high-res transparent PNGs on their way into Google Slides.">
-<title>Savage: Convert SVGs to PNGs for Google Slides</title>
+<meta name="description" content="Savage is a Chrome extension that pastes SVGs into Google Slides as native, editable shapes, falling back to a transparent PNG when a shape can't be represented.">
+<title>Savage: paste SVGs into Google Slides as editable shapes</title>
 <style>
   @font-face {
     font-family: 'Bricolage';
@@ -169,32 +169,32 @@
 <div class="wrap">
   <p class="px eyebrow">Savage <span class="dot">·</span> Chrome extension for Google Slides</p>
 
-  <h1>Google Slides made a <em>savage</em> out of you.</h1>
+  <h1>Paste SVGs into Google Slides as editable shapes.</h1>
 
   <p class="lede">
-    Brand logos increasingly ship as SVG. Drop one into a deck and Slides hands you
-    back a box of XML: it has never supported vectors. So exporting became a manual
-    chore: open Figma, Illustrator, or Affinity, save a PNG at the right size, come
-    back, drag it in. Every logo, every slide.
+    Google Slides can't paste or drop SVGs. <b class="brand">Savage</b> converts
+    them on the way in: copy an SVG or drag one onto a slide and it lands as
+    editable Slides shapes. Paths, basic shapes, gradients, and text (converted to
+    outlines) all become native shapes, grouped into one object you can move,
+    resize, and connect in a diagram.
   </p>
   <p class="lede">
-    <b class="brand">Savage</b>
-    takes the trade: pixels for convenience. Copy or drag any SVG straight into Slides
-    and it lands as a transparent PNG, 2048&nbsp;px on the longest side, sharp at
-    full-slide size. Drops place themselves, pastes are one <kbd>⌘V</kbd>, and it all
-    runs on your machine.
+    When part of an SVG can't be a shape, such as an embedded bitmap or a filter,
+    that SVG falls back to a transparent PNG instead, so a paste always produces
+    something. It runs locally; the only network requests are fetching an SVG you
+    drag from a site and fetching a font from Google Fonts when an SVG's text
+    needs one.
   </p>
 
   <div class="cta">
     <a class="btn" href="https://chromewebstore.google.com/detail/REPLACE_WITH_EXTENSION_ID">Add to Chrome</a>
-    <span class="cta-note">Free. One click, then open any deck.</span>
+    <span class="cta-note">Free. Open any Slides deck to use it.</span>
   </div>
 
   <footer>
     <p class="px">Slides only · Chrome only · No tracking</p>
-    <p>Add it, then open a deck. Chrome asks for clipboard access once so conversion
-    can happen before you paste. The vectors don't survive the trip. At 2048&nbsp;px,
-    you stop minding.</p>
+    <p>Chrome asks for clipboard access once so conversion can happen before you
+    paste.</p>
   </footer>
 </div>
 
