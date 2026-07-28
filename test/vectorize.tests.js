@@ -549,6 +549,43 @@ t('vec: paste is wrapped in one group over the anchor + every shape', async () =
   shapes.forEach((s) => assert(s.parent === 'p', 'children keep parent p'));
 });
 
+// Oversized pastes are scaled down (never up) to a max longest side so the
+// resize handles are reachable without zooming out. 4in = 146304 page units.
+const MAXDIM = 146304;
+function unionSide(shapes) {
+  const b = shapes.reduce((a, s) => {
+    const w = s.style[s.style.indexOf(8) + 1];
+    const h = s.style[s.style.indexOf(9) + 1];
+    return [Math.min(a[0], s.xf[4]), Math.min(a[1], s.xf[5]),
+      Math.max(a[2], s.xf[4] + w), Math.max(a[3], s.xf[5] + h)];
+  }, [Infinity, Infinity, -Infinity, -Infinity]);
+  return Math.max(b[2] - b[0], b[3] - b[1]);
+}
+
+t('vec: an oversized SVG is scaled down to the max longest side, aspect kept', async () => {
+  const { shapes } = unwrap(await svgToSliceClip(
+    V('<rect x="0" y="0" width="2000" height="1000" fill="#f00"/>',
+      'width="2000" height="1000" viewBox="0 0 2000 1000"')));
+  const s = shapes[0];
+  const w = s.style[s.style.indexOf(8) + 1];
+  const h = s.style[s.style.indexOf(9) + 1];
+  assert(near(Math.max(w, h), MAXDIM, 50), `longest side ${Math.max(w, h)} should be ~${MAXDIM}`);
+  assert(near(w / h, 2, 0.02), `aspect must hold, got ${w / h}`);
+});
+
+t('vec: a small SVG is NOT scaled up', async () => {
+  const s = await one(V('<rect width="24" height="24" fill="#f00"/>', 'viewBox="0 0 24 24"'));
+  assert(near(s.style[s.style.indexOf(8) + 1], 24 * 381, 3), '24px icon stays 24px, not enlarged');
+});
+
+t('vec: the anchor covers the scaled-down bounds', async () => {
+  const { shapes, anchor } = unwrap(await svgToSliceClip(
+    V('<rect x="0" y="0" width="2000" height="1000" fill="#f00"/>',
+      'width="2000" height="1000" viewBox="0 0 2000 1000"')));
+  const w = shapes[0].style[shapes[0].style.indexOf(8) + 1];
+  assert(near(anchor.xf[0] * 120000, w, 4), 'anchor width tracks the scaled shape');
+});
+
 t('vec: even a single shape is grouped with a connector anchor', async () => {
   const { shapes, anchor, groups } = unwrap(await svgToSliceClip(V('<rect width="10" height="10" fill="#f00"/>')));
   assert(shapes.length === 1 && anchor && groups.length === 1, 'lone shape gets anchor + group');

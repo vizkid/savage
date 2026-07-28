@@ -13,6 +13,7 @@ const VEC_TYPE = 'application/x-vnd.google-docs-drawings-object+wrapped';
 const VEC_SCALE = 381; // Slides page units per CSS px (36576/inch)
 const VEC_PASTE_X = 36576; // pasted SVG's top-left lands at (1", 0.5")
 const VEC_PASTE_Y = 18288;
+const VEC_MAX_DIM = 4 * 36576; // cap the longest pasted side at 4in (36576/inch)
 
 // Elements that force PNG fallback wherever they appear (defs included).
 // <text> converts via text-to-curves (fonts.js); <style> is allowed only
@@ -666,6 +667,22 @@ async function vecConvert(svgText, opts) {
   // percentage/default width & height resolve against.
   await vecWalk(ctx, root, rootMatrix, rootInherited, shapes, { w: vb[2], h: vb[3] });
   if (!shapes.length) vecReject('nothing convertible');
+
+  // Cap the pasted size: an SVG whose natural size exceeds the slide lands
+  // larger than the canvas, so the resize handles need a zoom-out to reach.
+  // Scale DOWN only (never enlarge), about the paste origin, aspect preserved.
+  // Stroke weight (key 22) and the anchor derive from the matrix, so scaling
+  // it here flows through everything downstream.
+  const contentBounds = vecShapesBounds(shapes);
+  if (contentBounds) {
+    const cw = contentBounds.maxX - contentBounds.minX;
+    const ch = contentBounds.maxY - contentBounds.minY;
+    const k = Math.min(VEC_MAX_DIM / cw, VEC_MAX_DIM / ch, 1);
+    if (k < 1) {
+      const cap = [k, 0, 0, k, VEC_PASTE_X * (1 - k), VEC_PASTE_Y * (1 - k)];
+      for (const shape of shapes) shape.matrix = matMultiply(cap, shape.matrix);
+    }
+  }
 
   const commands = [];
   const childIds = [];
