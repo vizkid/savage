@@ -7,7 +7,7 @@ Everything the dashboard asks for, in order. Upload `savage-<version>.zip`
 
 - **Name:** Savage
 - **Short description** (≤132 chars):
-  Paste SVGs into Google Slides as native, editable shapes. Copy or drag one in — it lands recolorable and scalable, or PNG.
+  Paste SVGs into Google Slides as native, editable shapes. Copy or drag one in and it lands recolorable and scalable, or PNG.
 - **Category:** Workflow & Planning (or Tools)
 - **Language:** English
 - **Homepage:** https://github.com/vizkid/savage
@@ -18,12 +18,12 @@ Everything the dashboard asks for, in order. Upload `savage-<version>.zip`
 Google Slides has no SVG support: paste one and you get raw markup in a text
 box. Savage fixes that. Copy an SVG (markup, a Figma "Copy as SVG", an SVG
 image) or drag one onto a slide, and it arrives as **native Google Slides
-shapes** — recolorable, scalable, and editable like anything you drew by hand.
+shapes**, recolorable, scalable, and editable like anything you drew by hand.
 
 Under the hood it converts SVG paths, basic shapes, gradients, and text into
 Slides' own vector format. When something can't be represented as a shape
 (embedded bitmaps, clip masks, filters), it falls back automatically to a
-sharp, transparent PNG — so a paste never fails, it just gives you the best
+sharp, transparent PNG, so a paste never fails; it still gives you the best
 result possible.
 
 • Paths, rectangles, circles, polygons, and gradients become editable shapes
@@ -50,7 +50,7 @@ rewrite or drag-and-drop, because Slides cannot accept SVGs natively.
   Contents are inspected locally and never stored or transmitted.
 - **clipboardWrite**: replaces the clipboard's contents with the converted
   result (the original SVG markup is preserved as text).
-- **storage**: persists a single user setting — the PNG-fallback output size.
+- **storage**: persists a single user setting: the PNG-fallback output size.
 - **declarativeNetRequestWithHostAccess**: when converting SVG text whose font
   is not embedded, the extension fetches that font from Google Fonts. Google's
   font API only serves the TrueType format (which the extension can read) to
@@ -71,7 +71,7 @@ rewrite or drag-and-drop, because Slides cannot accept SVGs natively.
 ## Note for reviewers: no remote code
 
 Savage executes no remote code. The Google Fonts request fetches font **data**
-(a TrueType file), which is parsed locally to trace glyph outlines — it is
+(a TrueType file), which is parsed locally to trace glyph outlines; it is
 never executed. All executable code ships inside the package: the vendored
 libraries in `vendor/` (opentype.js for font parsing, clipper-lib for polygon
 normalization, and a bundled Roboto font) are static files, listed in
@@ -91,5 +91,5 @@ normalization, and a bundled Roboto font) are static files, listed in
 - Icons: shipped in the zip (`icons/`, 16/32/48/128).
 - Screenshots (1280×800 or 640×400, at least one required): `store/` currently
   has `screenshot-1.png` (landing hero, v1-era). **Replace / add** at least one
-  real capture of an SVG landing on a slide as editable shapes — that is the
+  real capture of an SVG landing on a slide as editable shapes; that is the
   headline feature and the old hero doesn't show it. See build/submit steps.
