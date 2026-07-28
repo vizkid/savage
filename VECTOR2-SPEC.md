@@ -137,6 +137,18 @@ the feature; the shortcut keeps intent local to one paste.
    design guarantees it; tests must prove it, including the async-verify
    fallback path (step 3 above).
 
+## Deferred
+
+**Cropping clip-paths** (clips that actually cut geometry, vs. the no-op frame
+clips already honored). Deferred 2026-07-28 — PNG fallback is fine for now.
+When it matters: Slides' native masking is **image-only** (no live vector-group
+mask in the UI or the cracked clipboard format), so the path is to **bake the
+clip geometrically** — flatten the clip region to a polygon and Clipper-
+intersect each filled shape with it, emitting the clipped freeforms (we already
+ship Clipper). The clip is permanent, not a live mask. Fall back to PNG for
+clipped shapes with a visible stroke (needs stroke-outlining) or a clip region
+that can't be flattened.
+
 ## Non-goals
 
 Native editable Slides text, multi-line/flowed text, complex shaping (Arabic,
