@@ -210,7 +210,7 @@ function vecPreScan(root) {
   }
   for (const el of all) {
     if (VEC_REJECT_ELEMENTS.has(el.localName)) vecReject(`<${el.localName}> is out of scope`);
-    if (el !== root && el.localName === 'svg') vecReject('nested <svg>');
+    // Nested <svg> is handled as a viewport in the walk (vecNestedViewport).
     if (el.localName === 'style') continue;
     const p = vecProps(el, rules);
     for (const k of ['mask', 'clip-path', 'filter']) {
@@ -458,7 +458,50 @@ async function vecTextSegments(ctx, el, paint) {
   }
 }
 
-async function vecWalk(ctx, el, matrix, inherited, shapes) {
+// Resolve an SVG length against a percentage basis; '' → default.
+function vecLen(v, pctBasis, dflt) {
+  if (v === null || v === undefined || v.trim() === '') return dflt;
+  const t = v.trim();
+  const n = parseFloat(t);
+  if (!Number.isFinite(n)) return NaN;
+  return t.endsWith('%') ? (n / 100) * pctBasis : n;
+}
+
+// A nested <svg> establishes a new viewport. Returns the matrix mapping its
+// content coords to the parent's user units, plus the child content viewport
+// size (for resolving deeper percentages). Rejects clipping (slice), which we
+// can't reproduce.
+function vecNestedViewport(el, parentVp) {
+  const x = vecLen(el.getAttribute('x'), parentVp.w, 0);
+  const y = vecLen(el.getAttribute('y'), parentVp.h, 0);
+  const vpW = vecLen(el.getAttribute('width'), parentVp.w, parentVp.w);
+  const vpH = vecLen(el.getAttribute('height'), parentVp.h, parentVp.h);
+  if (![x, y, vpW, vpH].every(Number.isFinite) || vpW <= 0 || vpH <= 0) vecReject('nested <svg> viewport');
+  const vb = (el.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+  if (!(vb.length === 4 && vb[2] > 0 && vb[3] > 0)) {
+    return { matrix: [1, 0, 0, 1, x, y], viewport: { w: vpW, h: vpH } };
+  }
+  const [minX, minY, vbW, vbH] = vb;
+  const par = (el.getAttribute('preserveAspectRatio') || 'xMidYMid meet').trim().split(/\s+/);
+  const align = par[0];
+  if ((par[1] || 'meet') === 'slice') vecReject('nested <svg> slice (clips)');
+  let sx = vpW / vbW;
+  let sy = vpH / vbH;
+  let tx = x - minX * sx;
+  let ty = y - minY * sy;
+  if (align !== 'none') {
+    const s = Math.min(sx, sy);
+    sx = s;
+    sy = s;
+    const fx = align.includes('xMid') ? 0.5 : align.includes('xMax') ? 1 : 0;
+    const fy = align.includes('YMid') ? 0.5 : align.includes('YMax') ? 1 : 0;
+    tx = x - minX * s + (vpW - vbW * s) * fx;
+    ty = y - minY * s + (vpH - vbH * s) * fy;
+  }
+  return { matrix: [sx, 0, 0, sy, tx, ty], viewport: { w: vbW, h: vbH } };
+}
+
+async function vecWalk(ctx, el, matrix, inherited, shapes, viewport) {
   for (const child of el.children) {
     const name = child.localName;
     if (VEC_SKIP_ELEMENTS.has(name)) continue;
@@ -468,7 +511,12 @@ async function vecWalk(ctx, el, matrix, inherited, shapes) {
     if (!local) vecReject('unsupported transform');
     const m = matMultiply(matrix, local);
     if (name === 'g' || name === 'a') {
-      await vecWalk(ctx, child, m, paint, shapes);
+      await vecWalk(ctx, child, m, paint, shapes, viewport);
+      continue;
+    }
+    if (name === 'svg') {
+      const nested = vecNestedViewport(child, viewport);
+      await vecWalk(ctx, child, matMultiply(m, nested.matrix), paint, shapes, nested.viewport);
       continue;
     }
     if (name === 'text') {
@@ -533,7 +581,9 @@ async function vecConvert(svgText, opts) {
     'font-weight': '400',
     'text-anchor': 'start',
   });
-  await vecWalk(ctx, root, rootMatrix, rootInherited, shapes);
+  // Root content lives in viewBox units; that's the viewport a nested <svg>'s
+  // percentage/default width & height resolve against.
+  await vecWalk(ctx, root, rootMatrix, rootInherited, shapes, { w: vb[2], h: vb[3] });
   if (!shapes.length) vecReject('nothing convertible');
 
   const commands = [];

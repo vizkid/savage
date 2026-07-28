@@ -177,6 +177,29 @@ t('vec: smooth cubics (S) extend the chained run', async () => {
 
 // --- transforms ---
 
+t('vec: nested <svg> viewport scales + positions its content', async () => {
+  // Inner svg: viewBox 10×10 mapped to a 50×50 viewport at (20,20). A 10-unit
+  // rect fills the inner viewBox → 50×50 user units at (20,20) in the outer.
+  const s = await one(V('<svg x="20" y="20" width="50" height="50" viewBox="0 0 10 10">' +
+    '<rect x="0" y="0" width="10" height="10" fill="#f00"/></svg>', 'viewBox="0 0 100 100"'));
+  assert(arrNear([s.xf[4], s.xf[5]], [PX + 20 * 381, PY + 20 * 381], 3), `origin ${s.xf[4]},${s.xf[5]}`);
+  assert(near(sv(s, 8), 50 * 381, 4) && near(sv(s, 9), 50 * 381, 4), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
+});
+
+t('vec: nested <svg> with no width/height fills the parent viewport (scraped wrapper)', async () => {
+  // The BMC pattern: inner svg has only a viewBox; width/height default to the
+  // parent viewport, so its viewBox scales up to fill it.
+  const s = await one(V('<svg viewBox="0 0 25 25"><rect x="0" y="0" width="25" height="25" fill="#f00"/></svg>',
+    'viewBox="0 0 100 100"'));
+  assert(near(sv(s, 8), 100 * 381, 6) && near(sv(s, 9), 100 * 381, 6), `filled parent, 8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
+});
+
+t('vec: nested <svg> with preserveAspectRatio="slice" → null (would clip)', async () => {
+  const svg = V('<svg width="50" height="50" viewBox="0 0 10 20" preserveAspectRatio="xMidYMid slice">' +
+    '<rect width="10" height="20" fill="#f00"/></svg>', 'viewBox="0 0 100 100"');
+  assert((await svgToSliceClip(svg)) === null, 'slice clips — must fall back to PNG');
+});
+
 t('vec: nested translate+scale bake into coords', async () => {
   const s = await one(V('<g transform="translate(10,10)"><g transform="scale(2)">' +
     '<rect x="0" y="0" width="10" height="10" fill="#f00"/></g></g>'));
@@ -425,7 +448,6 @@ t('vec: out-of-scope features → null', async () => {
       '<rect width="10" height="10" fill="#f00" clip-path="url(#c)"/>'],
     ['filter', '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>' +
       '<rect width="10" height="10" fill="#f00" filter="url(#f)"/>'],
-    ['nested svg', `<svg ${NS} x="0" y="0" width="10" height="10"><rect width="5" height="5"/></svg>`],
     ['foreignObject', '<foreignObject width="10" height="10"><div>x</div></foreignObject>'],
   ];
   for (const [label, inner] of cases) {
