@@ -1,6 +1,6 @@
 # Savage: Vectors by Default (spec)
 
-**Owner:** viz · **Last updated:** 2026-07-23 · **Status:** shipped (main @ 431a605)
+**Owner:** viz · **Last updated:** 2026-11-12 · **Status:** shipped (main @ 431a605); outline clips + packed arc flags added 2026-11-12
 **Lineage:** extends the shipped `VECTOR-SPEC.md` (v1: drop/URL flow, no text)
 
 ## Shipped state (what actually landed)
@@ -20,7 +20,8 @@ All four planned milestones plus fixes surfaced during live acceptance:
 | PNG fallback | Rasterize + synthetic auto-place decoupled from the clipboard write, so a blocked write never hard-errors |
 
 Vendored: opentype.js (MIT), clipper-lib (Boost), Roboto Regular (Apache) —
-`vendor/LICENSES.md`. Unit suite 87/87; live acceptance rows 19–30.
+`vendor/LICENSES.md`. Unit suite 110/110 (2026-11-12); live acceptance rows 19–33.
+Clipper geometry (fill normalization, clip regions) lives in `vecgeom.js`.
 `#7` (size-match the hatch PNG) intentionally left as-is per owner.
 
 ## Problem / solution
@@ -137,10 +138,38 @@ the feature; the shortcut keeps intent local to one paste.
    design guarantees it; tests must prove it, including the async-verify
    fallback path (step 3 above).
 
+## Clip paths that remove nothing
+
+Exporters often wrap artwork in a clip that cuts nothing. Figma and Atlassian
+use a frame rectangle. Illustrator PDF exports use the artwork's own outline,
+often through `<use>` (the Barclays logo clips its eagle to a shield path).
+**A clip-path is ignored when the clipped content lies inside the clip
+region. Otherwise the SVG falls back to PNG.**
+
+| Piece | Rule |
+|---|---|
+| Clip region | Union of the `<clipPath>` children: `rect`, `circle`, `ellipse`, `polygon`, `polyline`, `path`, and `<use>` that points by `#id` at one of those in the same file. Child `transform`, the `<use>` `x`/`y`, and `clip-rule` apply. |
+| Containment | Clipper difference of the content's flattened outline minus the clip region (grown by 2 CSS px for curve-flattening slack). Stroked shapes are grown by half the stroke width first. Any remaining area → PNG. |
+| `<use>` | Allowed only inside `<clipPath>`. Anywhere else it still forces PNG. |
+| PNG fallback | `clipPathUnits="objectBoundingBox"`, a clip child we cannot turn into an outline, or content that crosses the clip edge. |
+
+## Path data and viewBox
+
+Arc flags are single characters and may be packed without separators, as
+minifiers emit them: `a5 5 0 01-.6.04` means flags `0`, `1`, then `x = -.6`.
+The parser reads each flag as one `0` or `1` character.
+
+The root `<svg>` fits its viewBox into `width`/`height` the way a browser
+does, through the same code as a nested `<svg>`. `preserveAspectRatio`
+defaults to `xMidYMid meet`, so the artwork keeps its aspect. Only `none`
+stretches per axis. `slice` crops the overflow, so it falls back to PNG.
+Example: the Barclays logo declares `width="1200" height="800"` over a 5:1
+viewBox and pastes at 5:1.
+
 ## Deferred
 
-**Cropping clip-paths** (clips that actually cut geometry, vs. the no-op frame
-clips already honored). Deferred 2026-07-28 — PNG fallback is fine for now.
+**Cropping clip-paths** (clips that actually cut geometry, vs. the no-op
+clips described above). Deferred 2026-07-28 — PNG fallback is fine for now.
 When it matters: Slides' native masking is **image-only** (no live vector-group
 mask in the UI or the cracked clipboard format), so the path is to **bake the
 clip geometrically** — flatten the clip region to a polygon and Clipper-

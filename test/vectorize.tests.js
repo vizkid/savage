@@ -68,9 +68,10 @@ t('vec: width/height attrs rescale user units', async () => {
   assert(near(sv(s, 8), 30480), `8 = ${sv(s, 8)}`);
 });
 
-t('vec: non-uniform viewBox scale applies per axis', async () => {
+t('vec: preserveAspectRatio="none" scales the viewBox per axis', async () => {
+  // Only "none" stretches; the default (meet) keeps the aspect — tested below.
   const s = await one(V('<rect x="0" y="0" width="40" height="30" fill="#f00"/>',
-    'width="200" height="100" viewBox="0 0 100 100"'));
+    'width="200" height="100" viewBox="0 0 100 100" preserveAspectRatio="none"'));
   assert(near(sv(s, 8), 30480) && near(sv(s, 9), 11430), `8/9 = ${sv(s, 8)}/${sv(s, 9)}`);
 });
 
@@ -293,6 +294,80 @@ t('vec: frame clip with a transform (offset rect covering content) is ignored', 
   assert(shapes.length === 1, 'offset frame clip that covers content converts');
 });
 
+// Outline clips (VECTOR2-SPEC "Clip paths that remove nothing"): any clip
+// region is ignored when the content lies inside it.
+
+t('vec: outline clip via <use> that contains the content is ignored (Barclays pattern)', async () => {
+  // Illustrator PDF export: clipPath → <use href="#a">, #a a path in <defs>,
+  // the artwork sits inside that outline. The defs path must not be emitted.
+  const { shapes } = unwrap(await svgToSliceClip(V(
+    '<defs><clipPath id="b"><use xlink:href="#a" overflow="visible" width="595" height="841"/></clipPath>' +
+    '<path id="a" d="M10 10 H90 V70 Q50 100 10 70 Z"/></defs>' +
+    '<circle cx="50" cy="45" r="20" fill="#00afe9" clip-path="url(#b)" transform="translate(2 3)"/>',
+    'xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100"')));
+  assert(shapes.length === 1, `expected the circle only, got ${shapes.length}`);
+});
+
+t('vec: circle clip that contains the content is ignored', async () => {
+  const { shapes } = unwrap(await svgToSliceClip(V(
+    '<defs><clipPath id="c"><circle cx="50" cy="50" r="45"/></clipPath></defs>' +
+    '<rect x="35" y="35" width="30" height="30" fill="#f00" clip-path="url(#c)"/>')));
+  assert(shapes.length === 1, 'content inside the circle clip converts');
+});
+
+t('vec: rotated rect clip that contains the content is ignored', async () => {
+  const { shapes } = unwrap(await svgToSliceClip(V(
+    '<defs><clipPath id="c"><rect x="-40" y="-40" width="80" height="80" ' +
+    'transform="translate(50 50) rotate(45)"/></clipPath></defs>' +
+    '<rect x="40" y="40" width="20" height="20" fill="#f00" clip-path="url(#c)"/>')));
+  assert(shapes.length === 1, 'content inside a rotated frame converts');
+});
+
+t('vec: clip that cuts a stroke (fill fits, stroke overhangs) → null', async () => {
+  const svg = V('<defs><clipPath id="c"><rect width="100" height="100"/></clipPath></defs>' +
+    '<rect x="5" y="5" width="90" height="90" fill="#f00" stroke="#000" stroke-width="20" clip-path="url(#c)"/>');
+  assert((await svgToSliceClip(svg)) === null, 'a clipped stroke must fall back to PNG');
+});
+
+t('vec: <use> in a clipPath pointing at a non-shape → null', async () => {
+  const svg = V('<defs><g id="g"><rect width="100" height="100"/></g>' +
+    '<clipPath id="c"><use href="#g"/></clipPath></defs>' +
+    '<rect x="10" y="10" width="20" height="20" fill="#f00" clip-path="url(#c)"/>');
+  assert((await svgToSliceClip(svg)) === null, 'unresolvable clip child must fall back to PNG');
+});
+
+t('vec: objectBoundingBox clip → null', async () => {
+  const svg = V('<defs><clipPath id="c" clipPathUnits="objectBoundingBox"><rect width="1" height="1"/></clipPath></defs>' +
+    '<rect x="10" y="10" width="20" height="20" fill="#f00" clip-path="url(#c)"/>');
+  assert((await svgToSliceClip(svg)) === null, 'objectBoundingBox clips stay PNG');
+});
+
+t('vec: root width/height aspect ≠ viewBox aspect keeps the viewBox aspect (meet)', async () => {
+  // Barclays: width=1200 height=800 over a ~5:1 viewBox. Browsers letterbox.
+  const s = await one(V('<rect width="100" height="100" fill="#f00"/>',
+    'width="400" height="100" viewBox="0 0 100 100"'));
+  assert(near(sv(s, 8), sv(s, 9), 2), `square must stay square, got ${sv(s, 8)}×${sv(s, 9)}`);
+});
+
+t('vec: root preserveAspectRatio="none" stretches to width/height', async () => {
+  const s = await one(V('<rect width="100" height="100" fill="#f00"/>',
+    'width="400" height="100" viewBox="0 0 100 100" preserveAspectRatio="none"'));
+  assert(near(sv(s, 8) / sv(s, 9), 4, 0.01), `expected 4:1, got ${sv(s, 8)}×${sv(s, 9)}`);
+});
+
+t('path: packed arc flags parse like spaced ones', () => {
+  const same = (packed, spaced) => {
+    const a = parsePathD(packed);
+    const b = parsePathD(spaced);
+    assert(a && b && JSON.stringify(a) === JSON.stringify(b), `${packed} vs ${spaced}: ${JSON.stringify(a)}`);
+  };
+  same('M0 0a5.012 5.012 0 01-.612.038', 'M0 0a5.012 5.012 0 0 1 -.612 .038');
+  same('M0 0a5 5 0 1110 0', 'M0 0a5 5 0 1 1 10 0');
+  same('M0 0A5 5 0 00.5 1', 'M0 0A5 5 0 0 0 .5 1');
+  same('M0 0a5 5 0 1 0 10 0 5 5 0 0010 0', 'M0 0a5 5 0 1 0 10 0 a5 5 0 0 0 10 0');
+  assert(parsePathD('M0 0a5 5 0 2 0 10 0') === null, 'flag 2 is malformed');
+});
+
 t('vec: real-world logo (Google Cloud pattern) converts both paths', async () => {
   const { shapes } = unwrap(await svgToSliceClip(V(
     '<defs><style>.cls-1{fill:#ea4335;}.cls-2{fill:#4285f4;}</style></defs>' +
@@ -464,7 +539,7 @@ t('vec: out-of-scope features → null', async () => {
     // clip-path that actually cuts content (10×10 into 5×5) stays PNG.
     ['clip-path cuts', '<defs><clipPath id="c"><rect width="5" height="5"/></clipPath></defs>' +
       '<rect width="10" height="10" fill="#f00" clip-path="url(#c)"/>'],
-    ['non-rect clip', '<defs><clipPath id="c"><circle cx="5" cy="5" r="5"/></clipPath></defs>' +
+    ['circle clip cuts the corners', '<defs><clipPath id="c"><circle cx="5" cy="5" r="5"/></clipPath></defs>' +
       '<rect width="10" height="10" fill="#f00" clip-path="url(#c)"/>'],
     ['filter', '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>' +
       '<rect width="10" height="10" fill="#f00" filter="url(#f)"/>'],

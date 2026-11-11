@@ -185,6 +185,16 @@ function parsePathD(d) {
     if (!Number.isFinite(n)) throw new Error('bad number');
     return n;
   };
+  // Arc flags are one character each and minifiers pack them against the
+  // next number ("0 01-.6" = flags 0, 1), which the tokenizer reads as one
+  // token. Take the first character as the flag and leave the rest in place.
+  const flag = () => {
+    const tok = tokens[i];
+    if (tok === undefined || (tok[0] !== '0' && tok[0] !== '1')) throw new Error('bad flag');
+    if (tok.length === 1) i++;
+    else tokens[i] = tok.slice(1);
+    return Number(tok[0]);
+  };
   const quadToCubic = (qx, qy, x, y) => quadToCubicSeg(cx, cy, qx, qy, x, y);
   try {
     while (i < tokens.length) {
@@ -283,11 +293,10 @@ function parsePathD(d) {
           const rx = num();
           const ry = num();
           const rot = num();
-          const laf = num();
-          const swf = num();
+          const laf = flag();
+          const swf = flag();
           const x = num() + (rel ? cx : 0);
           const y = num() + (rel ? cy : 0);
-          if ((laf !== 0 && laf !== 1) || (swf !== 0 && swf !== 1)) return null;
           for (const seg of arcToCubics(cx, cy, rx, ry, rot, laf, swf, x, y)) out.push(seg);
           cx = x;
           cy = y;

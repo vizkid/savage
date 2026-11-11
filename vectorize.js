@@ -23,8 +23,8 @@ const VEC_REJECT_ELEMENTS = new Set([
   'mask', 'filter', 'script', 'switch', 'symbol',
   'marker', 'animate', 'animateMotion', 'animateTransform', 'set',
 ]);
-// clipPath is resolved on demand (vecClipBounds) and its definition is skipped
-// wherever it sits — a rectangular frame that contains the content is a no-op.
+// clipPath is resolved on demand (vecClipRegion) and its definition is skipped
+// wherever it sits — a clip region that contains the content is a no-op.
 const VEC_SKIP_ELEMENTS = new Set([
   'defs', 'title', 'desc', 'metadata', 'linearGradient', 'radialGradient', 'stop',
   'style', 'clipPath',
@@ -213,6 +213,8 @@ function vecPreScan(root) {
     }
   }
   for (const el of all) {
+    // <use> is resolved inside a <clipPath> only (vecClipRegion validates it).
+    if (el.localName === 'use' && el.closest('clipPath')) continue;
     if (VEC_REJECT_ELEMENTS.has(el.localName)) vecReject(`<${el.localName}> is out of scope`);
     // Nested <svg> is handled as a viewport in the walk (vecNestedViewport).
     if (el.localName === 'style') continue;
@@ -345,85 +347,6 @@ function vecEmitPath(segments, matrix) {
   return { ops, coords };
 }
 
-// Flatten M/L/C/Z segments into per-subpath point rings (cubics sampled at a
-// fixed resolution — only used for overlap topology, not the emitted path).
-function vecSubpathRings(segments) {
-  const subs = [];
-  let cur = null;
-  let px = 0;
-  let py = 0;
-  for (const seg of segments) {
-    if (seg[0] === 'M') {
-      cur = [[seg[1], seg[2]]];
-      subs.push(cur);
-      px = seg[1];
-      py = seg[2];
-    } else if (seg[0] === 'L' && cur) {
-      cur.push([seg[1], seg[2]]);
-      px = seg[1];
-      py = seg[2];
-    } else if (seg[0] === 'C' && cur) {
-      const [x0, y0] = [px, py];
-      for (let k = 1; k <= 12; k++) {
-        const t = k / 12;
-        const a = 1 - t;
-        cur.push([
-          a * a * a * x0 + 3 * a * a * t * seg[1] + 3 * a * t * t * seg[3] + t * t * t * seg[5],
-          a * a * a * y0 + 3 * a * a * t * seg[2] + 3 * a * t * t * seg[4] + t * t * t * seg[6],
-        ]);
-      }
-      px = seg[5];
-      py = seg[6];
-    }
-  }
-  return subs.filter((s) => s.length >= 3);
-}
-
-const VEC_CLIP_SCALE = 100;
-
-function vecRingsToClipper(segments) {
-  return vecSubpathRings(segments).map((pts) =>
-    pts.map(([x, y]) => ({ X: Math.round(x * VEC_CLIP_SCALE), Y: Math.round(y * VEC_CLIP_SCALE) })));
-}
-
-function vecFilledArea(paths, rule) {
-  const simp = ClipperLib.Clipper.SimplifyPolygons(paths, rule);
-  return simp.reduce((a, r) => a + Math.abs(ClipperLib.Clipper.Area(r)), 0);
-}
-
-// Slides fills freeforms evenodd; SVG default is nonzero. They diverge only
-// when a path overlaps itself — same-winding overlapping subpaths (union
-// idiom), or a single self-intersecting / keyhole contour (a counter reached
-// through a zero-width slit, common in logo letter outlines). Detect that by
-// comparing the nonzero- and evenodd-filled areas of the same flattened
-// contours: equal → the rules agree, emit exact béziers untouched; differ →
-// normalize. Catches keyholes a pairwise-subpath test misses, and never
-// false-fires on adjacent-but-disjoint shapes (their areas match).
-function vecNeedsEvenoddFix(segments) {
-  const paths = vecRingsToClipper(segments);
-  if (paths.length < 1) return false;
-  const nz = vecFilledArea(paths, ClipperLib.PolyFillType.pftNonZero);
-  const eo = vecFilledArea(paths, ClipperLib.PolyFillType.pftEvenOdd);
-  return nz > 0 && Math.abs(nz - eo) > nz * 0.001;
-}
-
-// Normalize a nonzero-fill path into evenodd-safe M/L/Z rings (Clipper, as
-// with glyphs). Flattens curves — acceptable at slide scale, and only used on
-// the rare path whose nonzero fill differs from evenodd.
-function vecNormalizeFill(segments) {
-  const S = VEC_CLIP_SCALE;
-  const clean = ClipperLib.Clipper.SimplifyPolygons(
-    vecRingsToClipper(segments), ClipperLib.PolyFillType.pftNonZero);
-  const out = [];
-  for (const ring of clean) {
-    if (ring.length < 3) continue;
-    out.push(['M', ring[0].X / S, ring[0].Y / S]);
-    for (let i = 1; i < ring.length; i++) out.push(['L', ring[i].X / S, ring[i].Y / S]);
-    out.push(['Z']);
-  }
-  return out;
-}
-
 // <text> → glyph-outline segments via the resolved face. Rejects the text
 // features we can't lay out; whitespace-only content renders nothing.
 async function vecTextSegments(ctx, el, paint) {
@@ -483,14 +406,21 @@ function vecNestedViewport(el, parentVp) {
   const vpW = vecLen(el.getAttribute('width'), parentVp.w, parentVp.w);
   const vpH = vecLen(el.getAttribute('height'), parentVp.h, parentVp.h);
   if (![x, y, vpW, vpH].every(Number.isFinite) || vpW <= 0 || vpH <= 0) vecReject('nested <svg> viewport');
+  return vecViewBoxFit(el, x, y, vpW, vpH) ||
+    { matrix: [1, 0, 0, 1, x, y], viewport: { w: vpW, h: vpH } };
+}
+
+// An <svg>'s viewBox fitted into its viewport (x, y, vpW, vpH) per
+// preserveAspectRatio (default xMidYMid meet: uniform scale, centered).
+// Used for the root and nested <svg>. null when there is no valid viewBox.
+// slice crops the overflow, which shapes can't reproduce → PNG.
+function vecViewBoxFit(el, x, y, vpW, vpH) {
   const vb = (el.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
-  if (!(vb.length === 4 && vb[2] > 0 && vb[3] > 0)) {
-    return { matrix: [1, 0, 0, 1, x, y], viewport: { w: vpW, h: vpH } };
-  }
+  if (!(vb.length === 4 && vb[2] > 0 && vb[3] > 0)) return null;
   const [minX, minY, vbW, vbH] = vb;
   const par = (el.getAttribute('preserveAspectRatio') || 'xMidYMid meet').trim().split(/\s+/);
   const align = par[0];
-  if ((par[1] || 'meet') === 'slice') vecReject('nested <svg> slice (clips)');
+  if ((par[1] || 'meet') === 'slice') vecReject('<svg> slice (clips)');
   let sx = vpW / vbW;
   let sy = vpH / vbH;
   let tx = x - minX * sx;
@@ -530,37 +460,6 @@ function vecShapesBounds(arr) {
   return any ? { minX, minY, maxX, maxY } : null;
 }
 
-// A clip-path referencing a clipPath that is exactly one <rect> → its
-// page-space bounds. Rejects anything we can't treat as a rectangular frame
-// (non-rect shape, objectBoundingBox units, or a rotated/skewed clip).
-function vecClipBounds(url, m, ctx) {
-  const ref = /^url\(\s*['"]?#([^'")]+)['"]?\s*\)$/.exec(url);
-  if (!ref) vecReject('unsupported clip-path');
-  const clip = ctx.doc.querySelector(`[id="${ref[1].replace(/"/g, '\\"')}"]`);
-  if (!clip || clip.localName !== 'clipPath') vecReject('clip-path reference');
-  if (clip.getAttribute('clipPathUnits') === 'objectBoundingBox') vecReject('objectBoundingBox clip');
-  const kids = [...clip.children].filter((k) => k.localName !== 'title' && k.localName !== 'desc');
-  if (kids.length !== 1 || kids[0].localName !== 'rect') vecReject('non-rect clip');
-  const r = kids[0];
-  const rx = parseFloat(r.getAttribute('x') || '0') || 0;
-  const ry = parseFloat(r.getAttribute('y') || '0') || 0;
-  const rw = parseFloat(r.getAttribute('width') || '0');
-  const rh = parseFloat(r.getAttribute('height') || '0');
-  if (!(rw > 0 && rh > 0)) vecReject('degenerate clip rect');
-  const rt = parseTransform(r.getAttribute('transform'));
-  if (!rt) vecReject('clip rect transform');
-  const cm = matMultiply(m, rt);
-  if (Math.abs(cm[1]) > 1e-6 || Math.abs(cm[2]) > 1e-6) vecReject('rotated clip'); // not axis-aligned
-  const p1 = matApply(cm, rx, ry);
-  const p2 = matApply(cm, rx + rw, ry + rh);
-  return {
-    minX: Math.min(p1[0], p2[0]), minY: Math.min(p1[1], p2[1]),
-    maxX: Math.max(p1[0], p2[0]), maxY: Math.max(p1[1], p2[1]),
-  };
-}
-
-const VEC_CLIP_TOL = 762; // 2 CSS px of slack for control-point overshoot
-
 async function vecWalk(ctx, el, matrix, inherited, shapes, viewport) {
   for (const child of el.children) {
     const name = child.localName;
@@ -571,19 +470,15 @@ async function vecWalk(ctx, el, matrix, inherited, shapes, viewport) {
     if (!local) vecReject('unsupported transform');
     const m = matMultiply(matrix, local);
 
-    // clip-path: only a rectangular frame that contains all the clipped
-    // content is honored (as a no-op). A clip that actually cuts geometry we
-    // can't reproduce → PNG fallback.
+    // clip-path: honored as a no-op when the clipped content lies inside the
+    // clip region (frame rects, artwork outlines). A clip that actually cuts
+    // geometry → PNG fallback (vecgeom.js).
     const clip = props['clip-path'];
     if (clip && clip !== 'none') {
-      const bounds = vecClipBounds(clip, m, ctx);
+      const region = vecClipRegion(clip, m, ctx);
       const temp = [];
       await vecEmitChild(ctx, child, m, paint, temp, viewport, name);
-      const cb = vecShapesBounds(temp);
-      if (cb && (cb.minX < bounds.minX - VEC_CLIP_TOL || cb.minY < bounds.minY - VEC_CLIP_TOL ||
-                 cb.maxX > bounds.maxX + VEC_CLIP_TOL || cb.maxY > bounds.maxY + VEC_CLIP_TOL)) {
-        vecReject('clip-path removes content');
-      }
+      if (!vecClipContains(region, temp)) vecReject('clip-path removes content');
       for (const sh of temp) shapes.push(sh);
       continue;
     }
@@ -633,17 +528,15 @@ async function vecConvert(svgText, opts) {
       : (spec) => defaultResolveFont(spec, embeddedFaces, opts.fetchFont),
   };
 
+  // Root viewport = width/height in CSS px; the viewBox fits into it like a
+  // browser does (aspect kept unless preserveAspectRatio="none").
   const size = resolveSize(root);
-  const vbAttr = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
-  const vb = vbAttr.length === 4 && vbAttr[2] > 0 && vbAttr[3] > 0
-    ? vbAttr
-    : [0, 0, size.width, size.height];
-  const sx = (size.width / vb[2]) * VEC_SCALE;
-  const sy = (size.height / vb[3]) * VEC_SCALE;
+  const fit = vecViewBoxFit(root, 0, 0, size.width, size.height) ||
+    { matrix: [1, 0, 0, 1, 0, 0], viewport: { w: size.width, h: size.height } };
   const rootTransform = parseTransform(root.getAttribute('transform'));
   if (!rootTransform) vecReject('unsupported transform');
   const rootMatrix = matMultiply(
-    [sx, 0, 0, sy, VEC_PASTE_X - vb[0] * sx, VEC_PASTE_Y - vb[1] * sy],
+    matMultiply([VEC_SCALE, 0, 0, VEC_SCALE, VEC_PASTE_X, VEC_PASTE_Y], fit.matrix),
     rootTransform
   );
 
@@ -665,7 +558,7 @@ async function vecConvert(svgText, opts) {
   });
   // Root content lives in viewBox units; that's the viewport a nested <svg>'s
   // percentage/default width & height resolve against.
-  await vecWalk(ctx, root, rootMatrix, rootInherited, shapes, { w: vb[2], h: vb[3] });
+  await vecWalk(ctx, root, rootMatrix, rootInherited, shapes, fit.viewport);
   if (!shapes.length) vecReject('nothing convertible');
 
   // Cap the pasted size: an SVG whose natural size exceeds the slide lands

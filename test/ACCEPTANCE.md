@@ -20,7 +20,7 @@ a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_L
 | 9 | Copy malformed SVG (`<svg` unclosed) → focus Slides | Error toast; clipboard unchanged (paste still yields the broken text) |
 | 10 | Open a Google **Docs** document | Extension inert: no toast ever, no console errors (script injects but bails) |
 | 11 | Drag a `.svg` file from Finder onto a slide | In-scope SVG: toast "SVG pasted as editable shapes", native shapes land. Out-of-scope: toast "SVG placed", image lands. No keypress either way |
-| 12 | Drag an SVG image onto a slide from: (a) the raw SVG URL above opened in a tab, (b) a Commons `File:` page, (c) a Wikipedia article thumbnail | All three: fetched via service worker (wiki pages rewritten through `Special:FilePath`), then vector paste when in scope, PNG otherwise |
+| 12 | Drag an SVG image onto a slide from: (a) the raw SVG URL above opened in a tab, (b) a Commons `File:` page, (c) a Wikipedia article thumbnail | All three: fetched via service worker (wiki `File:` pages resolved through the MediaWiki API), then vector paste when in scope, PNG otherwise |
 | 13 | Drag a PNG or JPEG onto a slide | Extension does nothing; native drop works as stock |
 | 14 | Click toolbar icon → set output px to 1024 → paste an SVG; then clear the field → paste again | First paste is 1024 longest side; second is back to 2048 |
 | 15 | With "any site" off, drag an SVG image from a non-CORS site; then enable the popup toggle and retry | First: error toast naming the cross-origin block; after enabling (Chrome prompts once): same drag converts |
@@ -48,6 +48,7 @@ a raw SVG URL such as <https://upload.wikimedia.org/wikipedia/commons/4/4f/SVG_L
 | 30 | Drag an SVG that genuinely can't convert while the tab isn't focused | Falls back to PNG and still auto-places; never the "clipboard write was blocked" error |
 | 31 | Drag any multi-shape SVG (logo), then click the result once | Selects as **one group** (single bounding box); drags/scales as a unit; reload keeps it intact |
 | 32 | Drag an 8-bar-style logo (overlapping same-winding subpaths, e.g. IBM) | Converts to shapes, no notches at the overlaps; PNG only if such a path is also stroked |
+| 33 | Paste or drag the Barclays logo SVG (Illustrator export: eagle clipped to a shield outline through `<use>`, packed arc flags, 1200×800 box over a 5:1 viewBox) | Native shapes: wordmark + eagle, no PNG; aspect matches the original (not stretched tall) |
 
 Also: with the extension loaded and idle, the Slides console shows no errors.
 Vector run 2026-07-23: 16 (golden replay + live drop) and 17 passed live; unit

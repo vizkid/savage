@@ -33,7 +33,7 @@
     },
     {
       "matches": ["https://docs.google.com/presentation/*"],
-      "js": ["pathdata.js", "vendor/opentype.min.js", "vendor/clipper.js", "vendor/roboto-regular.js", "fonts.js", "vector-template.js", "vectorize.js"],
+      "js": ["pathdata.js", "vendor/opentype.min.js", "vendor/clipper.js", "vendor/roboto-regular.js", "vecgeom.js", "fonts.js", "vector-template.js", "vectorize.js"],
       "run_at": "document_idle"
     }
   ]

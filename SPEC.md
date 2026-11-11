@@ -27,7 +27,7 @@ That's the whole product. If the clipboard or drop has no SVG, the extension doe
 
 ## Non-goals (MVP)
 
-- ~~No vector/native-shape paste.~~ *(Shipped 2026-07-23: dropped/URL SVGs in scope convert to native editable shapes, PNG otherwise; see `VECTOR-SPEC.md`. The copy→Cmd+V flow still delivers PNG.)*
+- ~~No vector/native-shape paste.~~ *(Shipped 2026-07-23: dropped/URL SVGs in scope convert to native editable shapes, PNG otherwise; see `VECTOR-SPEC.md`. The copy→Cmd+V flow joined on 2026-07-23; see `VECTOR2-SPEC.md`.)*
 - No support for Docs, Sheets, or Drawings. Slides only.
 - No onboarding, accounts, or analytics. UI is the toast plus one config panel: a toolbar popup with a single "output px" field (added to MVP scope 2026-07-22 at owner's request).
 - No support for `.svg` files *copied* from Finder/Explorer (the async clipboard API cannot read arbitrary files). Dragging that same file in works instead; say so in the README.
@@ -176,7 +176,7 @@ Incidental findings, already folded in above: the key-event iframe is `about:bla
 9. Malformed SVG (`<svg` unclosed) → error toast, clipboard unchanged.
 10. Extension inert on docs.google.com/document (Docs) → script injects (pattern is docs.google.com/*) but bails at the top-URL guard: no listeners, no toast, no console errors.
 11. Drag a `.svg` file from the file manager onto a slide → "SVG placed" toast, image lands with no keypress.
-12. Drag an SVG onto a slide from each of: a raw `.svg` URL opened in a tab, a Wikimedia Commons `File:` page, and a Wikipedia article thumbnail (link target is the `File:` page, rewritten via `Special:FilePath`) → fetched, converted, auto-placed.
+12. Drag an SVG onto a slide from each of: a raw `.svg` URL opened in a tab, a Wikimedia Commons `File:` page, and a Wikipedia article thumbnail (link target is the `File:` page, resolved through the MediaWiki API) → fetched, converted, auto-placed.
 13. Drag a PNG or JPEG onto a slide → extension does nothing, native drop works as stock.
 14. Set output px to 1024 in the popup → paste is 1024 longest side; clear the field → paste is 2048 again.
 15. With "any site" off, drag an SVG image from a non-CORS site → error toast names the block and points at the popup toggle; enable the toggle (Chrome prompts once) → the same drag converts.
@@ -187,7 +187,7 @@ All 15 acceptance tests pass on current Chrome stable, loaded unpacked.
 
 ## Store packaging
 
-`store/LISTING.md` holds the complete dashboard kit: descriptions, single-purpose statement, per-permission justifications, and data-usage answers. `store/build.sh` zips exactly the runtime files + icons. Privacy policy is served at <https://vizkid.github.io/savage/privacy.html> (GitHub Pages, `docs/`). Icons are the amber star at 16/32/48/128. Owner steps: $5 developer registration, upload zip, paste listing, submit. Total code under ~500 lines. No console errors on docs.google.com with the extension idle.
+`store/LISTING.md` holds the complete dashboard kit: descriptions, single-purpose statement, per-permission justifications, and data-usage answers. `store/build.sh` zips exactly the runtime files + icons. Privacy policy is served at <https://vizkid.github.io/savage/privacy.html> (GitHub Pages, `docs/`). Icons are the official Savage logo (`icons/savage.svg`) at 16/32/48/128. Owner steps: $5 developer registration, upload zip, paste listing, submit. Total code under ~500 lines. No console errors on docs.google.com with the extension idle.
 
 ## Future (explicitly not now)
 

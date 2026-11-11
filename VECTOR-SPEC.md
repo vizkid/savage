@@ -55,9 +55,9 @@ On every **drop or dragged-URL** arrival of an SVG, `handleSvgPayload` tries
 - Returns `null` (unsupported feature) or delivery times out (400ms) → the
   `rasterizeSvg` → PNG pipeline runs unchanged, with today's toasts.
 
-The **copy → Cmd+V flow still delivers PNG**: the async clipboard API cannot
-carry custom types, so that flow needs trusted-paste interception (see
-Future). No new UI, no toggle. Vectors when we can, pixels when we must.
+The copy → Cmd+V flow delivered PNG in v1, because the async clipboard API
+cannot carry custom types. `VECTOR2-SPEC.md` added trusted-paste interception,
+so that flow now delivers vectors too. No new UI, no toggle. Vectors when we can, pixels when we must.
 
 ## The converter (pure, testable)
 
